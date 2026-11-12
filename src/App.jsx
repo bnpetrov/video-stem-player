@@ -9,7 +9,8 @@ export default function App() {
   const [opacities, setOpacities] = useState([1, 0, 0, 0]);
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
-  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); // 0 = нет эффекта, 100 = полная каша
+  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); 
+  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); // 0 = off, 1-100 = срез
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
 
   const activeChannelRef = useRef(null);
@@ -78,7 +79,7 @@ export default function App() {
 
     // 71 — ПИКСЕЛИЗАЦИЯ (0 - 100)
     if (knob === 71) {
-      const maxPixel = 100; // Максимальный размер пикселя
+      const maxPixel = 100;
       if (currentChannel !== null) {
         const absolutePixel = (value / 127) * maxPixel;
         setPixelLevels(prev => prev.map((p, idx) => (idx === currentChannel ? absolutePixel : p)));
@@ -100,6 +101,18 @@ export default function App() {
       } else if (deltaValue !== 0) {
         const deltaZoom = deltaValue * (zoomRange / 127);
         setZoomLevels(prev => prev.map(z => Math.max(minZoom, Math.min(maxZoom, z + deltaZoom))));
+      }
+    }
+
+    // 75 — THRESHOLD / СРЕЗ (0 - 100)
+    if (knob === 75) {
+      const maxThresh = 100;
+      if (currentChannel !== null) {
+        const absoluteThresh = (value / 127) * maxThresh;
+        setThresholdLevels(prev => prev.map((t, idx) => (idx === currentChannel ? absoluteThresh : t)));
+      } else if (deltaValue !== 0) {
+        const deltaThresh = deltaValue * (maxThresh / 127);
+        setThresholdLevels(prev => prev.map(t => Math.max(0, Math.min(maxThresh, t + deltaThresh))));
       }
     }
   }, [knobEvent]);
@@ -140,6 +153,7 @@ export default function App() {
         playbackRates={playbackRates}
         zoomLevels={zoomLevels}
         pixelLevels={pixelLevels}
+        thresholdLevels={thresholdLevels}
         positions={positions}
       />
 
@@ -167,6 +181,9 @@ export default function App() {
           </p>
           <p style={{ color: '#9c27b0' }}>
             pixel: {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
+          </p>
+          <p style={{ color: '#00bcd4' }}>
+            thresh: {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
           </p>
           <p style={{ color: '#ffeb3b' }}>
             pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
