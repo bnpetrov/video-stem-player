@@ -7,45 +7,57 @@ export default function App() {
   const [videos, setVideos] = useState([]);
   
   const [opacities, setOpacities] = useState([1, 0, 0, 0]);
-  const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); // Старт с 1x
+  const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
+  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); // Старт с 1x
 
   const activeChannelRef = useRef(null);
-  const lastKnobsRef = useRef({}); // Храним прошлую позицию ручек
+  const lastKnobsRef = useRef({}); // Возвращаем хранилище прошлых позиций
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
   }, [heldChannel]);
 
-  // ОБРАБОТКА КРУТИЛОК (Скорость)
+  // ОБРАБОТКА КРУТИЛОК (ABSOLUTE РЕЖИМ 0-127)
   useEffect(() => {
     if (!knobEvent) return;
     const { knob, value } = knobEvent;
     const currentChannel = activeChannelRef.current;
 
-    // Крутилка 70 — Скорость воспроизведения
+    const prevValue = lastKnobsRef.current[knob] !== undefined ? lastKnobsRef.current[knob] : value;
+    const deltaValue = value - prevValue;
+    
+    // Сохраняем позицию на будущее
+    lastKnobsRef.current[knob] = value;
+
+    // Крутилка 70 — СКОРОСТЬ ВОСПРОИЗВЕДЕНИЯ (0.0 - 2.0)
     if (knob === 70) {
       if (currentChannel !== null) {
-        // 1. АБСОЛЮТНОЕ УПРАВЛЕНИЕ ДЛЯ ОТДЕЛЬНОГО КАНАЛА
-        // Решает аппаратную проблему, когда физическая ручка упиралась в 0 или 127.
-        // Теперь положение ручки всегда 1:1 равно скорости для выбранного канала.
+        // АБСОЛЮТНОЕ управление для канала
         const absoluteRate = value * (2.0 / 127);
         setPlaybackRates(prev => prev.map((r, idx) => (idx === currentChannel ? absoluteRate : r)));
-      } else {
-        // 2. ОТНОСИТЕЛЬНОЕ УПРАВЛЕНИЕ (ДЕЛЬТА) ДЛЯ МАСТЕРА
-        const prevValue = lastKnobsRef.current[knob] !== undefined ? lastKnobsRef.current[knob] : value;
-        const deltaValue = value - prevValue;
-        
-        if (deltaValue !== 0) {
-          const deltaRate = deltaValue * (2.0 / 127);
-          // Каждый канал обрезается до 0..2 индивидуально. Никто никого больше не блокирует!
-          setPlaybackRates(prev => prev.map(r => Math.max(0, Math.min(2, r + deltaRate))));
-        }
+      } else if (deltaValue !== 0) {
+        // ОТНОСИТЕЛЬНОЕ (дельта) управление для мастера
+        const deltaRate = deltaValue * (2.0 / 127);
+        setPlaybackRates(prev => prev.map(r => Math.max(0, Math.min(2, r + deltaRate))));
       }
     }
-    
-    // Обязательно сохраняем позицию, чтобы при возврате на Мастер дельта считалась корректно
-    lastKnobsRef.current[knob] = value;
-    
+
+    // Крутилка 71 — ЗУМ / МАСШТАБ (0.25 - 4.0)
+    if (knob === 74) {
+      const minZoom = 0.25;
+      const maxZoom = 4.0;
+      const zoomRange = maxZoom - minZoom; // 3.75
+
+      if (currentChannel !== null) {
+        // АБСОЛЮТНОЕ: 0 -> 0.25, 127 -> 4.0
+        const absoluteZoom = minZoom + (value / 127) * zoomRange;
+        setZoomLevels(prev => prev.map((z, idx) => (idx === currentChannel ? absoluteZoom : z)));
+      } else if (deltaValue !== 0) {
+        // ОТНОСИТЕЛЬНОЕ: Мастер сдвигает все каналы плавно
+        const deltaZoom = deltaValue * (zoomRange / 127);
+        setZoomLevels(prev => prev.map(z => Math.max(minZoom, Math.min(maxZoom, z + deltaZoom))));
+      }
+    }
   }, [knobEvent]);
 
   // ОБРАБОТКА ПЭДОВ
@@ -82,6 +94,7 @@ export default function App() {
         videos={videos} 
         opacities={opacities}
         playbackRates={playbackRates}
+        zoomLevels={zoomLevels}
       />
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
@@ -103,6 +116,16 @@ export default function App() {
           <p style={{ color: '#03a9f4' }}>
             speed: {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
           </p>
+          <p style={{ color: '#e91e63' }}>
+            zoom: {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+          </p>
+          
+          <hr style={{ borderColor: '#444' }}/>
+          {midiLog ? (
+            <p>Com: {midiLog.command} | Note: {midiLog.note} | Vel: {midiLog.velocity}</p>
+          ) : (
+            <p>waiting MIDI...</p>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 
-export default function VideoMixer({ videos, opacities, playbackRates }) {
+export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels }) {
   const videoRefs = useRef([]);
   const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
 
@@ -16,17 +16,14 @@ export default function VideoMixer({ videos, opacities, playbackRates }) {
         // 2. Применяем скорость (0 = стопкадр)
         const rate = playbackRates[index] !== undefined ? playbackRates[index] : 1;
         
-        // Если скорость упала почти в ноль — безопасно ставим на паузу
         if (rate <= 0.05) {
           if (!videoEl.paused) videoEl.pause();
         } else {
-          // Защита от краша: браузеры падают, если передать playbackRate < 0.0625
           const safeRate = Math.max(0.1, Math.min(2.0, rate));
-          
           try {
             videoEl.playbackRate = safeRate;
             if (videoEl.paused && vol > 0) {
-              videoEl.play().catch(() => {}); // catch глушит ошибки прерывания play()
+              videoEl.play().catch(() => {});
             }
           } catch (err) {
             console.warn('Playback rate guard prevented crash:', err);
@@ -47,6 +44,7 @@ export default function VideoMixer({ videos, opacities, playbackRates }) {
       {videos.map((videoSrc, index) => {
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
         const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
+        const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
 
         return (
           <video
@@ -60,7 +58,8 @@ export default function VideoMixer({ videos, opacities, playbackRates }) {
               objectFit: 'cover',
               opacity: opacity,
               mixBlendMode: currentBlendMode,
-              transition: 'opacity 0.1s ease-out',
+              transform: `scale(${currentZoom})`,
+              transition: 'opacity 0.1s ease-out, transform 0.1s linear', // Добавлена плавность для зума
               pointerEvents: 'none'
             }}
           />
