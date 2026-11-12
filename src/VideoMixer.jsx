@@ -1,6 +1,22 @@
 import React, { useRef, useEffect } from 'react';
 
-export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, thresholdLevels, positions }) {
+// Палитра из 10 мощных CSS фильтров.
+// Четные: структурные (идеальны для ЧБ). Нечетные: цветовые (красят даже ЧБ через sepia).
+const cssFilters = [
+  'none',                                    // 0: Оригинал
+  'sepia(1) saturate(3) hue-rotate(320deg)', // 1: Розовый неон (Заливка)
+  'invert(1)',                               // 2: Жесткая инверсия негатива (Структура)
+  'sepia(1) saturate(3) hue-rotate(180deg)', // 3: Циановый / Лед (Заливка)
+  'blur(4px) contrast(3)',                   // 4: Глоу / Свечение (Структура)
+  'sepia(1) saturate(4) hue-rotate(45deg)',  // 5: Золотой / Желтый (Заливка)
+  'contrast(2) brightness(0.6)',             // 6: Дарк / Жесткие тени (Структура)
+  'sepia(0.8) hue-rotate(90deg) saturate(4)',// 7: Ядовито-зеленый (Заливка)
+  'invert(1) contrast(1.5)',                 // 8: Резкий негатив (Структура)
+  'sepia(1) hue-rotate(270deg) saturate(3)', // 9: Глубокий фиолетовый (Заливка)
+  'brightness(1.5) contrast(1.2)'            // 10: Пересвет / Выгорание (Структура)
+];
+
+export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, positions }) {
   const videoRefs = useRef([]);
   const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
 
@@ -40,17 +56,12 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
       boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
     }}>
       
-      {/* Скрытый SVG блок для генерации фильтров пикселизации и трешхолда */}
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           {videos.map((_, index) => {
             const pixelSize = pixelLevels && pixelLevels[index] ? Math.max(0.01, pixelLevels[index]) : 0.01;
-            
             const thresh = thresholdLevels && thresholdLevels[index] ? thresholdLevels[index] : 0;
-            const cutoff = thresh / 100; // 0.0 = белый экран, 1.0 = черный экран
-            
-            // ИНТЕНСИВНОСТЬ: Плавный фейд эффекта (от 0 до 1) на первых 20 делениях крутилки.
-            // Именно это убирает резкий скачок и делает переход мягким!
+            const cutoff = thresh / 100; 
             const intensity = Math.min(1, thresh / 20); 
 
             return (
@@ -64,21 +75,18 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
                 </filter>
 
                 <filter id={`threshold-${index}`}>
-                  {/* 1. Обесцвечиваем картинку в чистый ЧБ */}
                   <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="
                     0.2126 0.7152 0.0722 0 0
                     0.2126 0.7152 0.0722 0 0
                     0.2126 0.7152 0.0722 0 0
                     0 0 0 1 0" />
                   
-                  {/* 2. Жесткий математический срез (step function) */}
                   <feComponentTransfer in="gray" result="hardThresh">
                     <feFuncR type="linear" slope="255" intercept={-255 * cutoff}/>
                     <feFuncG type="linear" slope="255" intercept={-255 * cutoff}/>
                     <feFuncB type="linear" slope="255" intercept={-255 * cutoff}/>
                   </feComponentTransfer>
 
-                  {/* 3. Магический Кроссфейд: смешиваем Оригинал и Жесткий Срез в зависимости от интенсивности */}
                   <feComposite in="hardThresh" in2="SourceGraphic" operator="arithmetic" 
                                k1="0" k2={intensity} k3={1 - intensity} k4="0" />
                 </filter>
@@ -95,13 +103,18 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
         
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
-        // Трешхолд теперь активируется сразу, но плавно набирает силу
         const isThresholded = thresholdLevels && thresholdLevels[index] > 0.1; 
+        
+        // Получаем целое число (индекс фильтра от 0 до 10)
+        const filterIdx = filterLevels && filterLevels[index] !== undefined ? Math.round(filterLevels[index]) : 0;
+        const safeFilterIdx = Math.max(0, Math.min(cssFilters.length - 1, filterIdx));
+        const selectedCssFilter = cssFilters[safeFilterIdx];
 
-        // Фильтры стакаются друг за другом
         const activeFilters = [];
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
         if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
+        // Добавляем выбранный CSS фильтр поверх SVG (если он не 'none')
+        if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
         
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 

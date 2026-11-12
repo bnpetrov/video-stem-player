@@ -10,7 +10,8 @@ export default function App() {
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
   const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); 
-  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); // 0 = off, 1-100 = срез
+  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); 
+  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); // Индекс фильтра (0-10)
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
 
   const activeChannelRef = useRef(null);
@@ -77,7 +78,7 @@ export default function App() {
       }
     }
 
-    // 71 — ПИКСЕЛИЗАЦИЯ (0 - 100)
+    // 71 — ПИКСЕЛИЗАЦИЯ
     if (knob === 71) {
       const maxPixel = 100;
       if (currentChannel !== null) {
@@ -86,6 +87,18 @@ export default function App() {
       } else if (deltaValue !== 0) {
         const deltaPixel = deltaValue * (maxPixel / 127);
         setPixelLevels(prev => prev.map(p => Math.max(0, Math.min(maxPixel, p + deltaPixel))));
+      }
+    }
+
+    // 72 — ЦВЕТОВЫЕ И СТРУКТУРНЫЕ ФИЛЬТРЫ (0 - 10)
+    if (knob === 72) {
+      const maxFilter = 10;
+      if (currentChannel !== null) {
+        const absoluteFilter = (value / 127) * maxFilter;
+        setFilterLevels(prev => prev.map((f, idx) => (idx === currentChannel ? absoluteFilter : f)));
+      } else if (deltaValue !== 0) {
+        const deltaFilter = deltaValue * (maxFilter / 127);
+        setFilterLevels(prev => prev.map(f => Math.max(0, Math.min(maxFilter, f + deltaFilter))));
       }
     }
 
@@ -104,7 +117,7 @@ export default function App() {
       }
     }
 
-    // 75 — THRESHOLD / СРЕЗ (0 - 100)
+    // 75 — THRESHOLD / СРЕЗ
     if (knob === 75) {
       const maxThresh = 100;
       if (currentChannel !== null) {
@@ -154,6 +167,7 @@ export default function App() {
         zoomLevels={zoomLevels}
         pixelLevels={pixelLevels}
         thresholdLevels={thresholdLevels}
+        filterLevels={filterLevels}
         positions={positions}
       />
 
@@ -184,6 +198,9 @@ export default function App() {
           </p>
           <p style={{ color: '#00bcd4' }}>
             thresh: {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
+          </p>
+          <p style={{ color: '#ff5722' }}>
+            filter: {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
           </p>
           <p style={{ color: '#ffeb3b' }}>
             pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
