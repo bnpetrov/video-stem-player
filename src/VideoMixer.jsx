@@ -14,17 +14,14 @@ const cssFilters = [
   'brightness(1.5) contrast(1.2)'            
 ];
 
-export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, positions }) {
+export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, positions, zIndices }) {
   const videoRefs = useRef([]);
-  // Рефы для слоев-призраков (эхо)
   const ghost1Refs = useRef([]);
   const ghost2Refs = useRef([]);
   
   const delayLevelsRef = useRef(delayLevels);
-  
   const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
 
-  // Обновляем реф задержки для интервала синхронизации, чтобы не перезапускать его
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
   }, [delayLevels]);
@@ -34,7 +31,7 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
     const interval = setInterval(() => {
       videos.forEach((_, index) => {
         const delayLevel = delayLevelsRef.current[index] || 0;
-        if (delayLevel <= 1) return; // Эхо выключено
+        if (delayLevel <= 1) return; 
 
         const main = videoRefs.current[index];
         const g1 = ghost1Refs.current[index];
@@ -42,28 +39,21 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
 
         if (!main) return;
 
-        // Чем больше крутилка, тем сильнее отставание во времени (до 0.5s и 1.0s)
         const offset1 = (delayLevel / 100) * 0.5;
         const offset2 = (delayLevel / 100) * 1.0;
 
         const syncGhostTime = (ghost, offset) => {
           if (!ghost) return;
-          // Синхронизируем базовые статусы
           if (ghost.paused && !main.paused) ghost.play().catch(()=>{});
           if (!ghost.paused && main.paused) ghost.pause();
           if (ghost.playbackRate !== main.playbackRate) ghost.playbackRate = main.playbackRate;
 
           if (main.duration > 0) {
             let targetTime = main.currentTime - offset;
-            
-            // Бесшовная склейка при зацикливании (loop)
             while (targetTime < 0) targetTime += main.duration;
             while (targetTime > main.duration) targetTime -= main.duration;
 
             let diff = Math.abs(ghost.currentTime - targetTime);
-            
-            // Подтягиваем время призрака только если он отстал/опередил больше чем на 0.1 сек
-            // (игнорируем сам момент перескока loop, чтобы не было заиканий)
             if (diff > 0.15 && diff < (main.duration - 0.2)) {
               ghost.currentTime = targetTime;
             }
@@ -73,12 +63,11 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         syncGhostTime(g1, offset1);
         syncGhostTime(g2, offset2);
       });
-    }, 100); // Проверяем рассинхрон 10 раз в секунду
+    }, 100); 
 
     return () => clearInterval(interval);
   }, [videos]);
 
-  // Обновление громкости и скорости (как раньше)
   useEffect(() => {
     videos.forEach((_, index) => {
       if (videoRefs.current[index]) {
@@ -153,6 +142,7 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
+        const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
         
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
         const isThresholded = thresholdLevels && thresholdLevels[index] > 0.1; 
@@ -168,7 +158,7 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
-        // Базовый стиль, общий для Оригинала и Призраков
+        // Добавили zIndex
         const baseStyle = {
           position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
           objectFit: 'cover',
@@ -177,16 +167,15 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
           filter: filterStyle, 
           imageRendering: isPixelated ? 'pixelated' : 'auto', 
           transition: 'opacity 0.1s ease-out, scale 0.1s linear', 
-          pointerEvents: 'none'
+          pointerEvents: 'none',
+          zIndex: currentZIndex 
         };
 
-        // Чем больше крутилка Delay, тем ярче шлейф
         const ghost1Opacity = opacity * (currentDelay / 100) * 0.6;
         const ghost2Opacity = opacity * (currentDelay / 100) * 0.3;
 
         return (
           <React.Fragment key={index}>
-            {/* ОРИГИНАЛЬНОЕ ВИДЕО (Самый нижний слой) */}
             <video
               ref={el => videoRefs.current[index] = el}
               src={videoSrc}
@@ -195,19 +184,17 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
               style={{ ...baseStyle, opacity: opacity, mixBlendMode: currentBlendMode }}
             />
             
-            {/* ПРИЗРАК 1 (Отстает чуть-чуть, режим screen делает его светящимся поверх оригинала) */}
             {currentDelay > 1 && (
               <video
                 ref={el => ghost1Refs.current[index] = el}
                 src={videoSrc}
                 autoPlay
                 loop
-                muted // Обязательно глушим звук у призраков!
+                muted 
                 style={{ ...baseStyle, opacity: ghost1Opacity, mixBlendMode: 'screen' }}
               />
             )}
 
-            {/* ПРИЗРАК 2 (Отстает сильнее всего) */}
             {currentDelay > 1 && (
               <video
                 ref={el => ghost2Refs.current[index] = el}

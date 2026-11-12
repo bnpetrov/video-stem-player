@@ -4,7 +4,7 @@ export function useMidi() {
   const [midiLog, setMidiLog] = useState(null);
   const [noteOnEvent, setNoteOnEvent] = useState(null);
   const [knobEvent, setKnobEvent] = useState(null); 
-  const [stickEvent, setStickEvent] = useState(null); // Новое событие для джойстика
+  const [stickEvent, setStickEvent] = useState(null); 
   
   const [heldChannel, setHeldChannel] = useState(null); 
   const [heldPads, setHeldPads] = useState({});
@@ -36,11 +36,9 @@ export function useMidi() {
       const isChannelAftertouch = command >= 208 && command <= 223;
       const isControlChange = command >= 176 && command <= 191; 
       
-      // Pitch Bend (Ось X джойстика)
       const isPitchBend = command >= 224 && command <= 239;
 
       if (isPitchBend) {
-        // Конвертируем 14-битное значение (0 - 16383, центр 8192) в диапазон от -1.0 до 1.0
         const pbValue = (velocity << 7) + note;
         const normalizedX = (pbValue - 8192) / 8192;
         setStickEvent({ axis: 'x', value: normalizedX, time: now });
@@ -48,14 +46,11 @@ export function useMidi() {
       }
 
       if (isControlChange) {
-        // Ось Y джойстика (СС1 - вверх, СС2 - вниз по дефолту AKAI)
         if (note === 1) {
           setStickEvent({ axis: 'y', value: velocity / 127, time: now });
         } else if (note === 2) {
           setStickEvent({ axis: 'y', value: -velocity / 127, time: now });
         }
-        
-        // Отправляем все СС в крутилки, включая стик (на случай кастомных маппингов)
         setKnobEvent({ knob: note, value: velocity, time: now });
         return; 
       }
@@ -69,12 +64,13 @@ export function useMidi() {
         }
       }
 
-      if (isNoteOn && note >= 40 && note <= 43) {
+      // СМЕСТИЛИ ДИАПАЗОН НА 36-43
+      if (isNoteOn && note >= 36 && note <= 43) {
         pressureTrackRef.current[note] = { val: velocity, time: now, releasing: false };
         setHeldPads(prev => ({ ...prev, [note]: velocity }));
         setNoteOnEvent({ note, velocity, type: 'noteOn', time: now });
       } 
-      else if ((isPolyAftertouch || isChannelAftertouch) && (note >= 40 && note <= 43 || isChannelAftertouch)) {
+      else if ((isPolyAftertouch || isChannelAftertouch) && (note >= 36 && note <= 43 || isChannelAftertouch)) {
         const targetNote = isPolyAftertouch ? note : Number(Object.keys(pressureTrackRef.current)[0]);
         const newPressure = isPolyAftertouch ? velocity : note;
 
@@ -96,7 +92,7 @@ export function useMidi() {
         setHeldPads(p => (p[targetNote] !== undefined ? { ...p, [targetNote]: newPressure } : p));
         setNoteOnEvent({ note: targetNote, velocity: newPressure, type: 'aftertouch', time: now });
       } 
-      else if (isNoteOff && note >= 40 && note <= 43) {
+      else if (isNoteOff && note >= 36 && note <= 43) {
         delete pressureTrackRef.current[note];
         setHeldPads(prev => {
           const next = { ...prev };

@@ -14,6 +14,7 @@ export default function App() {
   const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); 
   const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0]); 
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
+  const [zIndices, setZIndices] = useState([0, 1, 2, 3]); 
 
   const activeChannelRef = useRef(null);
   
@@ -62,60 +63,64 @@ export default function App() {
     const { knob, value } = knobEvent;
     const currentChannel = activeChannelRef.current;
 
-    // Раскодируем Relative значение от AKAI
     let deltaStep = 0;
     if (value > 0 && value < 64) {
-      deltaStep = value; // Крутим вправо
+      deltaStep = value; 
     } else if (value > 64 && value <= 127) {
-      deltaStep = value - 128; // Крутим влево (127 превращается в -1)
+      deltaStep = value - 128; 
     }
 
     if (deltaStep === 0) return;
 
-    // Универсальная функция применения эффекта
     const applyRelativeEffect = (minVal, maxVal, stepMultiplier, setter) => {
       const deltaVal = deltaStep * stepMultiplier;
       
       setter(prev => {
         if (currentChannel !== null) {
-          // ИНДИВИДУАЛЬНЫЙ КАНАЛ
           return prev.map((v, idx) => 
             idx === currentChannel ? Math.max(minVal, Math.min(maxVal, v + deltaVal)) : v
           );
         } else {
-          // МАСТЕР: Каждый канал движется независимо, обрезаясь об свои лимиты
           return prev.map(v => Math.max(minVal, Math.min(maxVal, v + deltaVal)));
         }
       });
     };
 
-    // Применяем эффекты со своими множителями скорости (чувствительностью)
-    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    // Скорость
-    if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       // Пикселизация
-    if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       // Фильтры (0.2 чтобы менять не слишком резко)
-    if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    // Зум
-    if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   // Срез
-    if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       // Эхо
+    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    
+    if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       
+    if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       
+    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities);        
+    if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    
+    if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   
+    if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       
 
   }, [knobEvent]);
 
   // ОБРАБОТКА ПЭДОВ
   useEffect(() => {
     if (!noteOnEvent) return;
-    const { note, velocity } = noteOnEvent;
+    const { note, velocity, type } = noteOnEvent;
 
-    if (note >= 40 && note <= 43) {
-      const trackIndex = note - 40;
-      const MIN_THRESHOLD = 40;   
-      const SOLO_THRESHOLD = 127; 
-
-      if (velocity >= SOLO_THRESHOLD) {
-        setOpacities([0, 0, 0, 0].map((_, idx) => (idx === trackIndex ? 1 : 0)));
-      } else if (velocity <= MIN_THRESHOLD) {
-        setOpacities(prev => prev.map((op, idx) => (idx === trackIndex ? 0 : op)));
-      } else {
-        const mappedOpacity = (velocity - MIN_THRESHOLD) / (SOLO_THRESHOLD - MIN_THRESHOLD);
-        setOpacities(prev => prev.map((op, idx) => (idx === trackIndex ? mappedOpacity : op)));
+    if (type === 'noteOn' && velocity > 0) {
+      
+      // 1. НИЖНИЙ РЯД (36-39): Вытаскиваем видео на передний план (Z-Index)
+      if (note >= 36 && note <= 39) {
+        const trackIndex = note - 36;
+        setZIndices(prev => {
+          const maxZ = Math.max(...prev);
+          return prev.map((z, idx) => (idx === trackIndex ? maxZ + 1 : z));
+        });
+      }
+      
+      // 2. ВЕРХНИЙ РЯД (40-43): Жестко Включает / Выключает канал (Toggle Mute)
+      if (note >= 40 && note <= 43) {
+        const trackIndex = note - 40;
+        setOpacities(prev => prev.map((op, idx) => {
+          if (idx === trackIndex) {
+            return op > 0 ? 0 : 1; 
+          }
+          return op;
+        }));
       }
     }
   }, [noteOnEvent]);
@@ -139,6 +144,7 @@ export default function App() {
         filterLevels={filterLevels}
         delayLevels={delayLevels}
         positions={positions}
+        zIndices={zIndices}
       />
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
@@ -155,7 +161,7 @@ export default function App() {
           </p>
           <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#4caf50' }}>
-            levels: {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
+            levels (knob 73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
           </p>
           <p style={{ color: '#03a9f4' }}>
             speed: {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
@@ -165,6 +171,9 @@ export default function App() {
           </p>
           <p style={{ color: '#ffeb3b' }}>
             pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
+          </p>
+          <p style={{ color: '#fff' }}>
+            z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
           
           <hr style={{ borderColor: '#444' }}/>
