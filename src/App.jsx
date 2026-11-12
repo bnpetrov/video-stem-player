@@ -11,11 +11,11 @@ export default function App() {
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
   const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); 
   const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); 
-  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); // Индекс фильтра (0-10)
+  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); 
+  const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0]); 
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
 
   const activeChannelRef = useRef(null);
-  const lastKnobsRef = useRef({}); 
   
   const stickRef = useRef({ x: 0, y: 0 });
   const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
@@ -41,7 +41,6 @@ export default function App() {
 
       if ((sx !== 0 || sy !== 0) && currentChannel !== null) {
         const speed = 0.7; 
-        
         let newX = positionsRef.current[currentChannel].x + (sx * speed);
         let newY = positionsRef.current[currentChannel].y - (sy * speed); 
 
@@ -57,77 +56,47 @@ export default function App() {
     return () => cancelAnimationFrame(reqId);
   }, []);
 
-  // ОБРАБОТКА КРУТИЛОК (ABSOLUTE РЕЖИМ 0-127)
+  // ОБРАБОТКА КРУТИЛОК (БЕСКОНЕЧНЫЙ RELATIVE РЕЖИМ)
   useEffect(() => {
     if (!knobEvent) return;
     const { knob, value } = knobEvent;
     const currentChannel = activeChannelRef.current;
 
-    const prevValue = lastKnobsRef.current[knob] !== undefined ? lastKnobsRef.current[knob] : value;
-    const deltaValue = value - prevValue;
-    lastKnobsRef.current[knob] = value;
-
-    // 70 — СКОРОСТЬ
-    if (knob === 70) {
-      if (currentChannel !== null) {
-        const absoluteRate = value * (2.0 / 127);
-        setPlaybackRates(prev => prev.map((r, idx) => (idx === currentChannel ? absoluteRate : r)));
-      } else if (deltaValue !== 0) {
-        const deltaRate = deltaValue * (2.0 / 127);
-        setPlaybackRates(prev => prev.map(r => Math.max(0, Math.min(2, r + deltaRate))));
-      }
+    // Раскодируем Relative значение от AKAI
+    let deltaStep = 0;
+    if (value > 0 && value < 64) {
+      deltaStep = value; // Крутим вправо
+    } else if (value > 64 && value <= 127) {
+      deltaStep = value - 128; // Крутим влево (127 превращается в -1)
     }
 
-    // 71 — ПИКСЕЛИЗАЦИЯ
-    if (knob === 71) {
-      const maxPixel = 100;
-      if (currentChannel !== null) {
-        const absolutePixel = (value / 127) * maxPixel;
-        setPixelLevels(prev => prev.map((p, idx) => (idx === currentChannel ? absolutePixel : p)));
-      } else if (deltaValue !== 0) {
-        const deltaPixel = deltaValue * (maxPixel / 127);
-        setPixelLevels(prev => prev.map(p => Math.max(0, Math.min(maxPixel, p + deltaPixel))));
-      }
-    }
+    if (deltaStep === 0) return;
 
-    // 72 — ЦВЕТОВЫЕ И СТРУКТУРНЫЕ ФИЛЬТРЫ (0 - 10)
-    if (knob === 72) {
-      const maxFilter = 10;
-      if (currentChannel !== null) {
-        const absoluteFilter = (value / 127) * maxFilter;
-        setFilterLevels(prev => prev.map((f, idx) => (idx === currentChannel ? absoluteFilter : f)));
-      } else if (deltaValue !== 0) {
-        const deltaFilter = deltaValue * (maxFilter / 127);
-        setFilterLevels(prev => prev.map(f => Math.max(0, Math.min(maxFilter, f + deltaFilter))));
-      }
-    }
+    // Универсальная функция применения эффекта
+    const applyRelativeEffect = (minVal, maxVal, stepMultiplier, setter) => {
+      const deltaVal = deltaStep * stepMultiplier;
+      
+      setter(prev => {
+        if (currentChannel !== null) {
+          // ИНДИВИДУАЛЬНЫЙ КАНАЛ
+          return prev.map((v, idx) => 
+            idx === currentChannel ? Math.max(minVal, Math.min(maxVal, v + deltaVal)) : v
+          );
+        } else {
+          // МАСТЕР: Каждый канал движется независимо, обрезаясь об свои лимиты
+          return prev.map(v => Math.max(minVal, Math.min(maxVal, v + deltaVal)));
+        }
+      });
+    };
 
-    // 74 — ЗУМ
-    if (knob === 74) {
-      const minZoom = 0.25;
-      const maxZoom = 4.0;
-      const zoomRange = maxZoom - minZoom;
+    // Применяем эффекты со своими множителями скорости (чувствительностью)
+    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    // Скорость
+    if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       // Пикселизация
+    if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       // Фильтры (0.2 чтобы менять не слишком резко)
+    if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    // Зум
+    if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   // Срез
+    if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       // Эхо
 
-      if (currentChannel !== null) {
-        const absoluteZoom = minZoom + (value / 127) * zoomRange;
-        setZoomLevels(prev => prev.map((z, idx) => (idx === currentChannel ? absoluteZoom : z)));
-      } else if (deltaValue !== 0) {
-        const deltaZoom = deltaValue * (zoomRange / 127);
-        setZoomLevels(prev => prev.map(z => Math.max(minZoom, Math.min(maxZoom, z + deltaZoom))));
-      }
-    }
-
-    // 75 — THRESHOLD / СРЕЗ
-    if (knob === 75) {
-      const maxThresh = 100;
-      if (currentChannel !== null) {
-        const absoluteThresh = (value / 127) * maxThresh;
-        setThresholdLevels(prev => prev.map((t, idx) => (idx === currentChannel ? absoluteThresh : t)));
-      } else if (deltaValue !== 0) {
-        const deltaThresh = deltaValue * (maxThresh / 127);
-        setThresholdLevels(prev => prev.map(t => Math.max(0, Math.min(maxThresh, t + deltaThresh))));
-      }
-    }
   }, [knobEvent]);
 
   // ОБРАБОТКА ПЭДОВ
@@ -168,6 +137,7 @@ export default function App() {
         pixelLevels={pixelLevels}
         thresholdLevels={thresholdLevels}
         filterLevels={filterLevels}
+        delayLevels={delayLevels}
         positions={positions}
       />
 
@@ -193,6 +163,11 @@ export default function App() {
           <p style={{ color: '#e91e63' }}>
             zoom: {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
           </p>
+          <p style={{ color: '#ffeb3b' }}>
+            pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
+          </p>
+          
+          <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#9c27b0' }}>
             pixel: {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
           </p>
@@ -202,16 +177,9 @@ export default function App() {
           <p style={{ color: '#ff5722' }}>
             filter: {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
           </p>
-          <p style={{ color: '#ffeb3b' }}>
-            pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
+          <p style={{ color: '#8bc34a' }}>
+            delay: {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
           </p>
-          
-          <hr style={{ borderColor: '#444' }}/>
-          {midiLog ? (
-            <p>Com: {midiLog.command} | Note: {midiLog.note} | Vel: {midiLog.velocity}</p>
-          ) : (
-            <p>waiting MIDI...</p>
-          )}
         </div>
       </div>
     </div>
