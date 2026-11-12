@@ -3,15 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 export function useMidi() {
   const [midiLog, setMidiLog] = useState(null);
   const [noteOnEvent, setNoteOnEvent] = useState(null);
-  
-  // НОВЫЕ СОБЫТИЯ
   const [knobEvent, setKnobEvent] = useState(null); 
-  const [heldChannel, setHeldChannel] = useState(null); // Какой канал зажат (0-3)
-
+  const [stickEvent, setStickEvent] = useState(null); // Новое событие для джойстика
+  
+  const [heldChannel, setHeldChannel] = useState(null); 
   const [heldPads, setHeldPads] = useState({});
   const pressureTrackRef = useRef({});
 
-  // Клавиши-модификаторы для 4-х каналов
   const CHANNEL_KEYS = [51, 54, 56, 58]; 
 
   useEffect(() => {
@@ -36,16 +34,32 @@ export function useMidi() {
       const isNoteOff = (command >= 144 && command <= 159 && velocity === 0) || (command >= 128 && command <= 143);
       const isPolyAftertouch = command >= 160 && command <= 175;
       const isChannelAftertouch = command >= 208 && command <= 223;
-      
-      // Control Change - Крутилки
       const isControlChange = command >= 176 && command <= 191; 
+      
+      // Pitch Bend (Ось X джойстика)
+      const isPitchBend = command >= 224 && command <= 239;
+
+      if (isPitchBend) {
+        // Конвертируем 14-битное значение (0 - 16383, центр 8192) в диапазон от -1.0 до 1.0
+        const pbValue = (velocity << 7) + note;
+        const normalizedX = (pbValue - 8192) / 8192;
+        setStickEvent({ axis: 'x', value: normalizedX, time: now });
+        return;
+      }
 
       if (isControlChange) {
+        // Ось Y джойстика (СС1 - вверх, СС2 - вниз по дефолту AKAI)
+        if (note === 1) {
+          setStickEvent({ axis: 'y', value: velocity / 127, time: now });
+        } else if (note === 2) {
+          setStickEvent({ axis: 'y', value: -velocity / 127, time: now });
+        }
+        
+        // Отправляем все СС в крутилки, включая стик (на случай кастомных маппингов)
         setKnobEvent({ knob: note, value: velocity, time: now });
         return; 
       }
 
-      // 1. ОТСЛЕЖИВАНИЕ КЛАВИШ-МОДИФИКАТОРОВ ДЛЯ КАНАЛОВ
       if (CHANNEL_KEYS.includes(note)) {
         const channelIndex = CHANNEL_KEYS.indexOf(note);
         if (isNoteOn) {
@@ -55,7 +69,6 @@ export function useMidi() {
         }
       }
 
-      // 2. СТАБИЛЬНАЯ ЛОГИКА ДЛЯ ПЭДОВ 40-43
       if (isNoteOn && note >= 40 && note <= 43) {
         pressureTrackRef.current[note] = { val: velocity, time: now, releasing: false };
         setHeldPads(prev => ({ ...prev, [note]: velocity }));
@@ -94,5 +107,5 @@ export function useMidi() {
     }
   }, []);
 
-  return { midiLog, noteOnEvent, knobEvent, heldChannel, heldPads };
+  return { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldPads };
 }

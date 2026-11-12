@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 
-export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels }) {
+export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, positions }) {
   const videoRefs = useRef([]);
   const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
 
@@ -9,11 +9,9 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
       if (videoRefs.current[index]) {
         const videoEl = videoRefs.current[index];
         
-        // 1. Применяем громкость
         const vol = opacities[index] !== undefined ? opacities[index] : 0;
         videoEl.volume = Math.max(0, Math.min(1, vol));
 
-        // 2. Применяем скорость (0 = стопкадр)
         const rate = playbackRates[index] !== undefined ? playbackRates[index] : 1;
         
         if (rate <= 0.05) {
@@ -23,7 +21,7 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
           try {
             videoEl.playbackRate = safeRate;
             if (videoEl.paused && vol > 0) {
-              videoEl.play().catch(() => {});
+              videoEl.play().catch(() => {}); 
             }
           } catch (err) {
             console.warn('Playback rate guard prevented crash:', err);
@@ -45,6 +43,7 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
         const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+        const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
 
         return (
           <video
@@ -58,8 +57,11 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
               objectFit: 'cover',
               opacity: opacity,
               mixBlendMode: currentBlendMode,
-              transform: `scale(${currentZoom})`,
-              transition: 'opacity 0.1s ease-out, transform 0.1s linear', // Добавлена плавность для зума
+              // ИСПОЛЬЗУЕМ СОВРЕМЕННЫЕ РАЗДЕЛЬНЫЕ СВОЙСТВА
+              translate: `${currentPos.x}% ${currentPos.y}%`,
+              scale: currentZoom,
+              // АНИМАЦИЯ ТОЛЬКО ДЛЯ ЗУМА (scale) И ПРОЗРАЧНОСТИ
+              transition: 'opacity 0.1s ease-out, scale 0.1s linear', 
               pointerEvents: 'none'
             }}
           />

@@ -3,19 +3,58 @@ import { useMidi } from './useMidi';
 import VideoMixer from './VideoMixer';
 
 export default function App() {
-  const { midiLog, noteOnEvent, knobEvent, heldChannel } = useMidi();
+  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
   const [videos, setVideos] = useState([]);
   
   const [opacities, setOpacities] = useState([1, 0, 0, 0]);
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
-  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); // Старт с 1x
+  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
+  const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
 
   const activeChannelRef = useRef(null);
-  const lastKnobsRef = useRef({}); // Возвращаем хранилище прошлых позиций
+  const lastKnobsRef = useRef({}); 
+  
+  const stickRef = useRef({ x: 0, y: 0 });
+  const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
   }, [heldChannel]);
+
+  // ОБРАБОТКА ДЖОЙСТИКА
+  useEffect(() => {
+    if (!stickEvent) return;
+    const { axis, value } = stickEvent;
+    stickRef.current[axis] = Math.abs(value) > 0.05 ? value : 0;
+  }, [stickEvent]);
+
+  // АНИМАЦИОННЫЙ ЦИКЛ ПЕРЕМЕЩЕНИЯ (60 FPS)
+  useEffect(() => {
+    let reqId;
+    const loop = () => {
+      const sx = stickRef.current.x;
+      const sy = stickRef.current.y;
+      const currentChannel = activeChannelRef.current;
+
+      if ((sx !== 0 || sy !== 0) && currentChannel !== null) {
+        // УМЕНЬШИЛИ СКОРОСТЬ НА 20% (было 1.2, стало 0.95)
+        const speed = 0.7; 
+        
+        let newX = positionsRef.current[currentChannel].x + (sx * speed);
+        let newY = positionsRef.current[currentChannel].y - (sy * speed); 
+
+        // ОГРАНИЧИТЕЛЬ: центр видео не уходит за край холста (-50% ... 50%)
+        newX = Math.max(-50, Math.min(50, newX));
+        newY = Math.max(-50, Math.min(50, newY));
+
+        positionsRef.current[currentChannel] = { x: newX, y: newY };
+        setPositions([...positionsRef.current]);
+      }
+      reqId = requestAnimationFrame(loop);
+    };
+    reqId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(reqId);
+  }, []);
 
   // ОБРАБОТКА КРУТИЛОК (ABSOLUTE РЕЖИМ 0-127)
   useEffect(() => {
@@ -25,35 +64,29 @@ export default function App() {
 
     const prevValue = lastKnobsRef.current[knob] !== undefined ? lastKnobsRef.current[knob] : value;
     const deltaValue = value - prevValue;
-    
-    // Сохраняем позицию на будущее
     lastKnobsRef.current[knob] = value;
 
-    // Крутилка 70 — СКОРОСТЬ ВОСПРОИЗВЕДЕНИЯ (0.0 - 2.0)
+    // 70 — СКОРОСТЬ
     if (knob === 70) {
       if (currentChannel !== null) {
-        // АБСОЛЮТНОЕ управление для канала
         const absoluteRate = value * (2.0 / 127);
         setPlaybackRates(prev => prev.map((r, idx) => (idx === currentChannel ? absoluteRate : r)));
       } else if (deltaValue !== 0) {
-        // ОТНОСИТЕЛЬНОЕ (дельта) управление для мастера
         const deltaRate = deltaValue * (2.0 / 127);
         setPlaybackRates(prev => prev.map(r => Math.max(0, Math.min(2, r + deltaRate))));
       }
     }
 
-    // Крутилка 71 — ЗУМ / МАСШТАБ (0.25 - 4.0)
+    // 74 — ЗУМ
     if (knob === 74) {
       const minZoom = 0.25;
       const maxZoom = 4.0;
-      const zoomRange = maxZoom - minZoom; // 3.75
+      const zoomRange = maxZoom - minZoom;
 
       if (currentChannel !== null) {
-        // АБСОЛЮТНОЕ: 0 -> 0.25, 127 -> 4.0
         const absoluteZoom = minZoom + (value / 127) * zoomRange;
         setZoomLevels(prev => prev.map((z, idx) => (idx === currentChannel ? absoluteZoom : z)));
       } else if (deltaValue !== 0) {
-        // ОТНОСИТЕЛЬНОЕ: Мастер сдвигает все каналы плавно
         const deltaZoom = deltaValue * (zoomRange / 127);
         setZoomLevels(prev => prev.map(z => Math.max(minZoom, Math.min(maxZoom, z + deltaZoom))));
       }
@@ -95,6 +128,7 @@ export default function App() {
         opacities={opacities}
         playbackRates={playbackRates}
         zoomLevels={zoomLevels}
+        positions={positions}
       />
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
@@ -103,8 +137,8 @@ export default function App() {
           <input type="file" accept="video/*" multiple onChange={handleFileUpload} />
         </div>
 
-        <div style={{ padding: '20px', background: '#222', color: '#0f0', borderRadius: '8px', fontFamily: 'monospace', flex: 1 }}>
-          <h3>inf</h3>
+        <div style={{ padding: '20px', background: '#222', color: '#0f0', borderRadius: '8px', fontFamily: 'monospace', flex: 1.5 }}>
+          <h3>inf (debug)</h3>
           
           <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
             target mode: {heldChannel !== null ? `TRACK ${heldChannel + 1} ONLY` : 'MASTER ALL'}
@@ -118,6 +152,9 @@ export default function App() {
           </p>
           <p style={{ color: '#e91e63' }}>
             zoom: {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+          </p>
+          <p style={{ color: '#ffeb3b' }}>
+            pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
           </p>
           
           <hr style={{ borderColor: '#444' }}/>
