@@ -9,6 +9,7 @@ export default function App() {
   const [opacities, setOpacities] = useState([1, 0, 0, 0]);
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
+  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); // 0 = нет эффекта, 100 = полная каша
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
 
   const activeChannelRef = useRef(null);
@@ -37,13 +38,11 @@ export default function App() {
       const currentChannel = activeChannelRef.current;
 
       if ((sx !== 0 || sy !== 0) && currentChannel !== null) {
-        // УМЕНЬШИЛИ СКОРОСТЬ НА 20% (было 1.2, стало 0.95)
         const speed = 0.7; 
         
         let newX = positionsRef.current[currentChannel].x + (sx * speed);
         let newY = positionsRef.current[currentChannel].y - (sy * speed); 
 
-        // ОГРАНИЧИТЕЛЬ: центр видео не уходит за край холста (-50% ... 50%)
         newX = Math.max(-50, Math.min(50, newX));
         newY = Math.max(-50, Math.min(50, newY));
 
@@ -74,6 +73,18 @@ export default function App() {
       } else if (deltaValue !== 0) {
         const deltaRate = deltaValue * (2.0 / 127);
         setPlaybackRates(prev => prev.map(r => Math.max(0, Math.min(2, r + deltaRate))));
+      }
+    }
+
+    // 71 — ПИКСЕЛИЗАЦИЯ (0 - 100)
+    if (knob === 71) {
+      const maxPixel = 100; // Максимальный размер пикселя
+      if (currentChannel !== null) {
+        const absolutePixel = (value / 127) * maxPixel;
+        setPixelLevels(prev => prev.map((p, idx) => (idx === currentChannel ? absolutePixel : p)));
+      } else if (deltaValue !== 0) {
+        const deltaPixel = deltaValue * (maxPixel / 127);
+        setPixelLevels(prev => prev.map(p => Math.max(0, Math.min(maxPixel, p + deltaPixel))));
       }
     }
 
@@ -128,6 +139,7 @@ export default function App() {
         opacities={opacities}
         playbackRates={playbackRates}
         zoomLevels={zoomLevels}
+        pixelLevels={pixelLevels}
         positions={positions}
       />
 
@@ -152,6 +164,9 @@ export default function App() {
           </p>
           <p style={{ color: '#e91e63' }}>
             zoom: {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+          </p>
+          <p style={{ color: '#9c27b0' }}>
+            pixel: {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
           </p>
           <p style={{ color: '#ffeb3b' }}>
             pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}

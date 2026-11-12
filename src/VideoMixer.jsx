@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 
-export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, positions }) {
+export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, positions }) {
   const videoRefs = useRef([]);
   const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
 
@@ -39,11 +39,35 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
       backgroundColor: '#000', overflow: 'hidden', borderRadius: '12px',
       boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
     }}>
+      
+      {/* Скрытый SVG блок для генерации фильтра пикселизации */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          {videos.map((_, index) => {
+            const pixelSize = pixelLevels && pixelLevels[index] ? Math.max(0.01, pixelLevels[index]) : 0.01;
+            // Генерируем уникальный фильтр для каждого видео
+            return (
+              <filter id={`pixelate-${index}`} key={index}>
+                <feFlood x="4" y="4" height="2" width="2"/>
+                <feComposite width={pixelSize} height={pixelSize}/>
+                <feTile result="a"/>
+                <feComposite in="SourceGraphic" in2="a" operator="in"/>
+                <feMorphology operator="dilate" radius={Math.max(0, pixelSize / 2)}/>
+              </filter>
+            );
+          })}
+        </defs>
+      </svg>
+
       {videos.map((videoSrc, index) => {
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
         const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
+        
+        // Если уровень пикселизации больше 1, применяем SVG фильтр
+        const isPixelated = pixelLevels && pixelLevels[index] > 1;
+        const filterStyle = isPixelated ? `url(#pixelate-${index})` : 'none';
 
         return (
           <video
@@ -57,10 +81,10 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
               objectFit: 'cover',
               opacity: opacity,
               mixBlendMode: currentBlendMode,
-              // ИСПОЛЬЗУЕМ СОВРЕМЕННЫЕ РАЗДЕЛЬНЫЕ СВОЙСТВА
               translate: `${currentPos.x}% ${currentPos.y}%`,
               scale: currentZoom,
-              // АНИМАЦИЯ ТОЛЬКО ДЛЯ ЗУМА (scale) И ПРОЗРАЧНОСТИ
+              filter: filterStyle, // ПРИМЕНЯЕМ ПИКСЕЛИЗАЦИЮ
+              imageRendering: isPixelated ? 'pixelated' : 'auto', // Убирает сглаживание
               transition: 'opacity 0.1s ease-out, scale 0.1s linear', 
               pointerEvents: 'none'
             }}
