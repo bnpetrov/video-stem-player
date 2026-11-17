@@ -11,6 +11,7 @@ export function useMidi() {
   const pressureTrackRef = useRef({});
 
   const CHANNEL_KEYS = [51, 54, 56, 58]; 
+  const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60]; // Белые клавиши масок
 
   useEffect(() => {
     if (navigator.requestMIDIAccess) {
@@ -64,13 +65,16 @@ export function useMidi() {
         }
       }
 
-      // СМЕСТИЛИ ДИАПАЗОН НА 36-43
-      if (isNoteOn && note >= 36 && note <= 43) {
+      // ТЕПЕРЬ ПРОПУСКАЕМ ТАКЖЕ КЛАВИШИ МАСОК И ОБЩИЕ ПЭДЫ
+      const isPad = note >= 36 && note <= 43;
+      const isMaskKey = MASK_KEYS.includes(note);
+
+      if (isNoteOn && (isPad || isMaskKey)) {
         pressureTrackRef.current[note] = { val: velocity, time: now, releasing: false };
         setHeldPads(prev => ({ ...prev, [note]: velocity }));
         setNoteOnEvent({ note, velocity, type: 'noteOn', time: now });
       } 
-      else if ((isPolyAftertouch || isChannelAftertouch) && (note >= 36 && note <= 43 || isChannelAftertouch)) {
+      else if ((isPolyAftertouch || isChannelAftertouch) && (isPad || isChannelAftertouch)) {
         const targetNote = isPolyAftertouch ? note : Number(Object.keys(pressureTrackRef.current)[0]);
         const newPressure = isPolyAftertouch ? velocity : note;
 
@@ -92,7 +96,7 @@ export function useMidi() {
         setHeldPads(p => (p[targetNote] !== undefined ? { ...p, [targetNote]: newPressure } : p));
         setNoteOnEvent({ note: targetNote, velocity: newPressure, type: 'aftertouch', time: now });
       } 
-      else if (isNoteOff && note >= 36 && note <= 43) {
+      else if (isNoteOff && (isPad || isMaskKey)) {
         delete pressureTrackRef.current[note];
         setHeldPads(prev => {
           const next = { ...prev };

@@ -7,12 +7,15 @@ export default function App() {
   const [videos, setVideos] = useState([]);
   
   const [opacities, setOpacities] = useState([1, 0, 0, 0]);
+  const [volumes, setVolumes] = useState([1, 1, 1, 1]); // НОВОЕ: Аудио громкость
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
   const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); 
   const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); 
   const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); 
   const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0]); 
+  const [maskLevels, setMaskLevels] = useState([0, 0, 0, 0]); 
+  const [masterMask, setMasterMask] = useState(0);             
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
   const [zIndices, setZIndices] = useState([0, 1, 2, 3]); 
 
@@ -72,6 +75,7 @@ export default function App() {
 
     if (deltaStep === 0) return;
 
+    // СТАНДАРТНАЯ ФУНКЦИЯ (Где каналы упираются в лимиты независимо)
     const applyRelativeEffect = (minVal, maxVal, stepMultiplier, setter) => {
       const deltaVal = deltaStep * stepMultiplier;
       
@@ -86,24 +90,44 @@ export default function App() {
       });
     };
 
+    // НОВАЯ ФУНКЦИЯ (Только для Громкости) с блокировкой мастера для баланса
+    const applyMasterLockedVolume = (stepMultiplier, setter) => {
+      const deltaVal = deltaStep * stepMultiplier;
+
+      setter(prev => {
+        if (currentChannel !== null) {
+          // Индивидуальный канал двигаем как обычно
+          return prev.map((v, idx) => 
+            idx === currentChannel ? Math.max(0, Math.min(1.0, v + deltaVal)) : v
+          );
+        } else {
+          // МАСТЕР: Проверяем, уперся ли хоть один канал в 0 или 1.0 в сторону движения
+          const hitsLimit = prev.some(v => (deltaVal > 0 && v >= 1.0) || (deltaVal < 0 && v <= 0));
+          if (hitsLimit) {
+            return prev; // Блокируем изменение для всех! Баланс сохранен.
+          }
+          return prev.map(v => Math.max(0, Math.min(1.0, v + deltaVal)));
+        }
+      });
+    };
+
     if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    
     if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       
     if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       
-    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities);        
+    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities); // 73 - Прозрачность (визуал)
     if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    
     if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   
     if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       
+    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);       // 77 - Громкость (аудио)
 
   }, [knobEvent]);
 
-  // ОБРАБОТКА ПЭДОВ
+  // ОБРАБОТКА ПЭДОВ И МАСОК (БЕЛЫЕ КЛАВИШИ)
   useEffect(() => {
     if (!noteOnEvent) return;
     const { note, velocity, type } = noteOnEvent;
 
     if (type === 'noteOn' && velocity > 0) {
-      
-      // 1. НИЖНИЙ РЯД (36-39): Вытаскиваем видео на передний план (Z-Index)
       if (note >= 36 && note <= 39) {
         const trackIndex = note - 36;
         setZIndices(prev => {
@@ -112,7 +136,6 @@ export default function App() {
         });
       }
       
-      // 2. ВЕРХНИЙ РЯД (40-43): Жестко Включает / Выключает канал (Toggle Mute)
       if (note >= 40 && note <= 43) {
         const trackIndex = note - 40;
         setOpacities(prev => prev.map((op, idx) => {
@@ -121,6 +144,21 @@ export default function App() {
           }
           return op;
         }));
+      }
+
+      const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
+      if (MASK_KEYS.includes(note)) {
+        const maskIndex = MASK_KEYS.indexOf(note) + 1; 
+        const currentChannel = activeChannelRef.current;
+
+        setMaskLevels(prev => {
+          if (currentChannel !== null) {
+            return prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m));
+          } else {
+            const isAllMasked = prev.every(m => m === maskIndex);
+            return prev.map(() => (isAllMasked ? 0 : maskIndex));
+          }
+        });
       }
     }
   }, [noteOnEvent]);
@@ -137,12 +175,14 @@ export default function App() {
       <VideoMixer 
         videos={videos} 
         opacities={opacities}
+        volumes={volumes} // Прокидываем громкость
         playbackRates={playbackRates}
         zoomLevels={zoomLevels}
         pixelLevels={pixelLevels}
         thresholdLevels={thresholdLevels}
         filterLevels={filterLevels}
         delayLevels={delayLevels}
+        maskLevels={maskLevels}
         positions={positions}
         zIndices={zIndices}
       />
@@ -161,34 +201,47 @@ export default function App() {
           </p>
           <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#4caf50' }}>
-            levels (knob 73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
+            opacity (73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
+          </p>
+          <p style={{ color: '#ff5722' }}>
+            volume (77): {volumes.map((v, i) => `T${i + 1}: ${Math.round(v * 100)}%`).join(' | ')}
           </p>
           <p style={{ color: '#03a9f4' }}>
-            speed: {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
+            speed (70): {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
           </p>
           <p style={{ color: '#e91e63' }}>
-            zoom: {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+            zoom (74): {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
           </p>
           <p style={{ color: '#ffeb3b' }}>
-            pos: {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
+            pos (xy): {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
           </p>
           <p style={{ color: '#fff' }}>
             z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
+          <p style={{ color: '#00e676' }}>
+            mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-'+m}`).join(' | ')}
+          </p>
           
           <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#9c27b0' }}>
-            pixel: {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
+            pixel (71): {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
           </p>
           <p style={{ color: '#00bcd4' }}>
-            thresh: {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
+            thresh (75): {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
           </p>
           <p style={{ color: '#ff5722' }}>
-            filter: {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
+            filter (72): {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
           </p>
           <p style={{ color: '#8bc34a' }}>
-            delay: {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
+            delay (76): {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
           </p>
+
+          <hr style={{ borderColor: '#444' }}/>
+          {midiLog ? (
+            <p style={{ color: '#ccc' }}>MIDI IN: Cmd {midiLog.command} | Note {midiLog.note} | Vel {midiLog.velocity}</p>
+          ) : (
+            <p style={{ color: '#777' }}>waiting MIDI...</p>
+          )}
         </div>
       </div>
     </div>

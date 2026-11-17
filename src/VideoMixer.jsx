@@ -14,7 +14,19 @@ const cssFilters = [
   'brightness(1.5) contrast(1.2)'            
 ];
 
-export default function VideoMixer({ videos, opacities, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, positions, zIndices }) {
+const clipMasks = [
+  'none', 
+  'circle(50% at 50% 50%)', 
+  'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', 
+  'polygon(0 0, 25% 0, 25% 100%, 0% 100%, 50% 0, 75% 0, 75% 100%, 50% 100%)', 
+  'polygon(0 10%, 100% 10%, 100% 30%, 0 30%, 0 50%, 100% 50%, 100% 70%, 0 70%, 0 90%, 100% 90%, 100% 100%, 0 100%)', 
+  'polygon(10% 0, 20% 0, 20% 100%, 10% 100%, 30% 0, 40% 0, 40% 100%, 30% 100%, 50% 0, 60% 0, 60% 100%, 50% 100%, 70% 0, 80% 0, 80% 100%, 70% 100%, 90% 0, 100% 0, 100% 100%, 90% 100%)', 
+  'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)', 
+  'polygon(0 0, 0 100%, 20% 100%, 20% 20%, 80% 20%, 80% 80%, 20% 80%, 20% 100%, 100% 100%, 100% 0)', 
+  'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' 
+];
+
+export default function VideoMixer({ videos, opacities, volumes, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, maskLevels, positions, zIndices }) {
   const videoRefs = useRef([]);
   const ghost1Refs = useRef([]);
   const ghost2Refs = useRef([]);
@@ -68,13 +80,17 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
     return () => clearInterval(interval);
   }, [videos]);
 
+  // СИНХРОНИЗАЦИЯ СВОЙСТВ (Теперь Громкость и Прозрачность разделены)
   useEffect(() => {
     videos.forEach((_, index) => {
       if (videoRefs.current[index]) {
         const videoEl = videoRefs.current[index];
-        const vol = opacities[index] !== undefined ? opacities[index] : 0;
-        videoEl.volume = Math.max(0, Math.min(1, vol));
+        
+        // 1. АУДИОГРОМКОСТЬ (Кноб 77)
+        const audioVol = volumes && volumes[index] !== undefined ? volumes[index] : 1;
+        videoEl.volume = Math.max(0, Math.min(1, audioVol));
 
+        // 2. СКОРОСТЬ
         const rate = playbackRates[index] !== undefined ? playbackRates[index] : 1;
         
         if (rate <= 0.05) {
@@ -83,14 +99,20 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
           const safeRate = Math.max(0.1, Math.min(2.0, rate));
           try {
             videoEl.playbackRate = safeRate;
-            if (videoEl.paused && vol > 0) videoEl.play().catch(() => {}); 
+            // ВИДЕО ИГРАЕТ, ЕСЛИ ОНО ВИДИМО ИЛИ ЕГО СЛЫШНО
+            const isVisible = opacities[index] !== undefined && opacities[index] > 0;
+            const isAudible = audioVol > 0;
+            
+            if (videoEl.paused && (isVisible || isAudible)) {
+              videoEl.play().catch(() => {}); 
+            }
           } catch (err) {
             console.warn('Playback rate guard prevented crash:', err);
           }
         }
       }
     });
-  }, [opacities, videos, playbackRates]);
+  }, [opacities, volumes, videos, playbackRates]);
 
   const activeCount = opacities.filter(op => op > 0).length;
 
@@ -152,21 +174,24 @@ export default function VideoMixer({ videos, opacities, playbackRates, zoomLevel
         const safeFilterIdx = Math.max(0, Math.min(cssFilters.length - 1, filterIdx));
         const selectedCssFilter = cssFilters[safeFilterIdx];
 
+        const maskIdx = maskLevels && maskLevels[index] !== undefined ? maskLevels[index] : 0;
+        const selectedMask = clipMasks[maskIdx];
+
         const activeFilters = [];
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
         if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
-        // Добавили zIndex
         const baseStyle = {
           position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
           objectFit: 'cover',
           translate: `${currentPos.x}% ${currentPos.y}%`,
           scale: currentZoom,
           filter: filterStyle, 
-          imageRendering: isPixelated ? 'pixelated' : 'auto', 
-          transition: 'opacity 0.1s ease-out, scale 0.1s linear', 
+          imageRendering: isPixelated ? 'pixelated' : 'auto',
+          clipPath: selectedMask, 
+          transition: 'opacity 0.1s ease-out, scale 0.1s linear, clip-path 0.2s ease-out', 
           pointerEvents: 'none',
           zIndex: currentZIndex 
         };
