@@ -6,23 +6,23 @@ export default function App() {
   const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
   const [videos, setVideos] = useState([]);
   
-  const [opacities, setOpacities] = useState([1, 0, 0, 0]);
-  const [volumes, setVolumes] = useState([1, 1, 1, 1]); // НОВОЕ: Аудио громкость
-  const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1]); 
-  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1]); 
-  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0]); 
-  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0]); 
-  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0]); 
-  const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0]); 
-  const [maskLevels, setMaskLevels] = useState([0, 0, 0, 0]); 
-  const [masterMask, setMasterMask] = useState(0);             
-  const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
-  const [zIndices, setZIndices] = useState([0, 1, 2, 3]); 
+  // 5 каналов: 0..3 — видео, 4 — титры (клавиша 49)
+  const [opacities, setOpacities] = useState([1, 0, 0, 0, 0]);
+  const [volumes, setVolumes] = useState([1, 1, 1, 1, 1]);
+  const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1, 1]); 
+  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1, 1]); 
+  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0, 0]); 
+  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0, 0]); 
+  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0, 0]); 
+  const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0, 0]); 
+  const [maskLevels, setMaskLevels] = useState([0, 0, 0, 0, 0]); 
+  const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
+  const [zIndices, setZIndices] = useState([0, 1, 2, 3, 4]); 
 
   const activeChannelRef = useRef(null);
   
   const stickRef = useRef({ x: 0, y: 0 });
-  const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
+  const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
@@ -75,7 +75,6 @@ export default function App() {
 
     if (deltaStep === 0) return;
 
-    // СТАНДАРТНАЯ ФУНКЦИЯ (Где каналы упираются в лимиты независимо)
     const applyRelativeEffect = (minVal, maxVal, stepMultiplier, setter) => {
       const deltaVal = deltaStep * stepMultiplier;
       
@@ -90,21 +89,18 @@ export default function App() {
       });
     };
 
-    // НОВАЯ ФУНКЦИЯ (Только для Громкости) с блокировкой мастера для баланса
     const applyMasterLockedVolume = (stepMultiplier, setter) => {
       const deltaVal = deltaStep * stepMultiplier;
 
       setter(prev => {
         if (currentChannel !== null) {
-          // Индивидуальный канал двигаем как обычно
           return prev.map((v, idx) => 
             idx === currentChannel ? Math.max(0, Math.min(1.0, v + deltaVal)) : v
           );
         } else {
-          // МАСТЕР: Проверяем, уперся ли хоть один канал в 0 или 1.0 в сторону движения
-          const hitsLimit = prev.some(v => (deltaVal > 0 && v >= 1.0) || (deltaVal < 0 && v <= 0));
+          const hitsLimit = prev.some((v, idx) => idx < 4 && ((deltaVal > 0 && v >= 1.0) || (deltaVal < 0 && v <= 0)));
           if (hitsLimit) {
-            return prev; // Блокируем изменение для всех! Баланс сохранен.
+            return prev;
           }
           return prev.map(v => Math.max(0, Math.min(1.0, v + deltaVal)));
         }
@@ -114,11 +110,11 @@ export default function App() {
     if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    
     if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       
     if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       
-    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities); // 73 - Прозрачность (визуал)
+    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities);
     if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    
     if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   
     if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       
-    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);       // 77 - Громкость (аудио)
+    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);
 
   }, [knobEvent]);
 
@@ -175,7 +171,7 @@ export default function App() {
       <VideoMixer 
         videos={videos} 
         opacities={opacities}
-        volumes={volumes} // Прокидываем громкость
+        volumes={volumes}
         playbackRates={playbackRates}
         zoomLevels={zoomLevels}
         pixelLevels={pixelLevels}
@@ -197,7 +193,7 @@ export default function App() {
           <h3>inf (debug)</h3>
           
           <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
-            target mode: {heldChannel !== null ? `TRACK ${heldChannel + 1} ONLY` : 'MASTER ALL'}
+            target mode: {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
           </p>
           <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#4caf50' }}>
@@ -219,7 +215,7 @@ export default function App() {
             z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
           <p style={{ color: '#00e676' }}>
-            mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-'+m}`).join(' | ')}
+            mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-' + m}`).join(' | ')}
           </p>
           
           <hr style={{ borderColor: '#444' }}/>

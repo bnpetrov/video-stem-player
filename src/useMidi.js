@@ -10,8 +10,9 @@ export function useMidi() {
   const [heldPads, setHeldPads] = useState({});
   const pressureTrackRef = useRef({});
 
-  const CHANNEL_KEYS = [51, 54, 56, 58]; 
-  const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60]; // Белые клавиши масок
+  // 49 — 5-й канал (Титры)
+  const CHANNEL_KEYS = [51, 54, 56, 58, 49]; 
+  const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
 
   useEffect(() => {
     if (navigator.requestMIDIAccess) {
@@ -65,7 +66,6 @@ export function useMidi() {
         }
       }
 
-      // ТЕПЕРЬ ПРОПУСКАЕМ ТАКЖЕ КЛАВИШИ МАСОК И ОБЩИЕ ПЭДЫ
       const isPad = note >= 36 && note <= 43;
       const isMaskKey = MASK_KEYS.includes(note);
 

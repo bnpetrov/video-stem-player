@@ -1,5 +1,38 @@
 import React, { useRef, useEffect } from 'react';
 
+const MOVIE_TITLES = [
+  "1. THE NEON HORIZON",
+  "2. MIDNIGHT PROTOCOL",
+  "3. ECHOES OF TOMORROW",
+  "4. SOLARIS DESCENT",
+  "5. QUANTUM PARADOX",
+  "6. NEUROMANCER'S DREAM",
+  "7. CYBERDYNE SYSTEMS",
+  "8. BLADE RUNNER'S LEGACY",
+  "9. GHOST IN THE MACHINE",
+  "10. MATRIX RELOADED",
+  "11. VOID WALKER",
+  "12. STARLIGHT EXPRESS",
+  "13. EVENT HORIZON",
+  "14. DARK STAR",
+  "15. INTERSTELLAR OVERDRIVE",
+  "16. GALACTIC REBELLION",
+  "17. ASTEROID MINERS",
+  "18. SUPERNOVA SERENADE",
+  "19. BLACK HOLE SUN",
+  "20. NEBULA NAVIGATORS",
+  "21. COSMIC DRIFTERS",
+  "22. TIME PARADOX",
+  "23. CHRONOS ENGINE",
+  "24. FUTURE PAST",
+  "25. RETROGRADE",
+  "26. SYNTHWAVE NIGHTS",
+  "27. ARCADE CHAMPION",
+  "28. PIXEL WARRIORS",
+  "29. DIGITAL FRONTIER",
+  "30. VIRTUAL INSANITY"
+];
+
 const cssFilters = [
   'none',                                    
   'sepia(1) saturate(3) hue-rotate(320deg)', 
@@ -30,15 +63,23 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
   const videoRefs = useRef([]);
   const ghost1Refs = useRef([]);
   const ghost2Refs = useRef([]);
+
+  // Рефы для 5-го канала (Титры)
+  const creditsMainRef = useRef(null);
+  const creditsGhost1Ref = useRef(null);
+  const creditsGhost2Ref = useRef(null);
+  const creditsPosRef = useRef(0);
   
   const delayLevelsRef = useRef(delayLevels);
-  const blendModes = ['normal', 'screen', 'lighten', 'luminosity'];
+  const playbackRatesRef = useRef(playbackRates);
+  const blendModes = ['normal', 'screen', 'lighten', 'luminosity', 'screen'];
 
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
-  }, [delayLevels]);
+    playbackRatesRef.current = playbackRates;
+  }, [delayLevels, playbackRates]);
 
-  // ГЛАВНЫЙ ИНТЕРВАЛ ВРЕМЕНИ ДЛЯ DELAY (ЭХО)
+  // ГЛАВНЫЙ ИНТЕРВАЛ ВРЕМЕНИ ДЛЯ DELAY ВИДЕО (ЭХО)
   useEffect(() => {
     const interval = setInterval(() => {
       videos.forEach((_, index) => {
@@ -80,17 +121,61 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
     return () => clearInterval(interval);
   }, [videos]);
 
-  // СИНХРОНИЗАЦИЯ СВОЙСТВ (Теперь Громкость и Прозрачность разделены)
+  // АНИМАЦИЯ ТИТРОВ СВЕРХУ ВНИЗ (60 FPS)
+  useEffect(() => {
+    let reqId;
+    let lastTime = performance.now();
+
+    const animateCredits = (now) => {
+      const dt = Math.min(now - lastTime, 100);
+      lastTime = now;
+
+      const rate = playbackRatesRef.current[4] !== undefined ? playbackRatesRef.current[4] : 1;
+      const delay = delayLevelsRef.current[4] || 0;
+      const baseSpeed = 90; // Пикселей в секунду при скорости 1.0x
+
+      const singleListHeight = creditsMainRef.current ? creditsMainRef.current.scrollHeight / 2 : 1800;
+
+      if (rate > 0.05 && singleListHeight > 0) {
+        creditsPosRef.current = (creditsPosRef.current + (baseSpeed * rate * dt) / 1000) % singleListHeight;
+      }
+
+      // Двигаем сверху вниз: из -singleListHeight к 0
+      const mainY = -singleListHeight + creditsPosRef.current;
+      if (creditsMainRef.current) {
+        creditsMainRef.current.style.transform = `translateY(${mainY}px)`;
+      }
+
+      if (delay > 1 && singleListHeight > 0) {
+        const lag1 = (delay / 100) * 60;
+        const lag2 = (delay / 100) * 120;
+        const pos1 = (creditsPosRef.current - lag1 + singleListHeight) % singleListHeight;
+        const pos2 = (creditsPosRef.current - lag2 + singleListHeight) % singleListHeight;
+
+        if (creditsGhost1Ref.current) {
+          creditsGhost1Ref.current.style.transform = `translateY(${-singleListHeight + pos1}px)`;
+        }
+        if (creditsGhost2Ref.current) {
+          creditsGhost2Ref.current.style.transform = `translateY(${-singleListHeight + pos2}px)`;
+        }
+      }
+
+      reqId = requestAnimationFrame(animateCredits);
+    };
+
+    reqId = requestAnimationFrame(animateCredits);
+    return () => cancelAnimationFrame(reqId);
+  }, []);
+
+  // СИНХРОНИЗАЦИЯ ВИДЕО
   useEffect(() => {
     videos.forEach((_, index) => {
       if (videoRefs.current[index]) {
         const videoEl = videoRefs.current[index];
         
-        // 1. АУДИОГРОМКОСТЬ (Кноб 77)
         const audioVol = volumes && volumes[index] !== undefined ? volumes[index] : 1;
         videoEl.volume = Math.max(0, Math.min(1, audioVol));
 
-        // 2. СКОРОСТЬ
         const rate = playbackRates[index] !== undefined ? playbackRates[index] : 1;
         
         if (rate <= 0.05) {
@@ -99,7 +184,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           const safeRate = Math.max(0.1, Math.min(2.0, rate));
           try {
             videoEl.playbackRate = safeRate;
-            // ВИДЕО ИГРАЕТ, ЕСЛИ ОНО ВИДИМО ИЛИ ЕГО СЛЫШНО
             const isVisible = opacities[index] !== undefined && opacities[index] > 0;
             const isAudible = audioVol > 0;
             
@@ -116,6 +200,32 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
 
   const activeCount = opacities.filter(op => op > 0).length;
 
+  const renderCreditsList = (ref) => (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        textAlign: 'center',
+        color: '#ffffff',
+        fontFamily: 'monospace, sans-serif',
+        fontSize: '2.2rem',
+        fontWeight: 'bold',
+        letterSpacing: '3px',
+        textShadow: '0 2px 12px rgba(0,0,0,0.9)',
+        willChange: 'transform'
+      }}
+    >
+      {[...MOVIE_TITLES, ...MOVIE_TITLES].map((title, i) => (
+        <div key={i} style={{ padding: '18px 0' }}>
+          {title}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div style={{
       position: 'relative', width: '100%', height: '60vh',
@@ -125,7 +235,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
-          {videos.map((_, index) => {
+          {[0, 1, 2, 3, 4].map((index) => {
             const pixelSize = pixelLevels && pixelLevels[index] ? Math.max(0.01, pixelLevels[index]) : 0.01;
             const thresh = thresholdLevels && thresholdLevels[index] ? thresholdLevels[index] : 0;
             const cutoff = thresh / 100; 
@@ -159,7 +269,12 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         </defs>
       </svg>
 
-      {videos.map((videoSrc, index) => {
+      {[0, 1, 2, 3, 4].map((index) => {
+        const isCredits = index === 4;
+        const videoSrc = videos[index];
+
+        if (!isCredits && !videoSrc) return null;
+
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
         const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
@@ -175,7 +290,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         const selectedCssFilter = cssFilters[safeFilterIdx];
 
         const maskIdx = maskLevels && maskLevels[index] !== undefined ? maskLevels[index] : 0;
-        const selectedMask = clipMasks[maskIdx];
+        const selectedMask = clipMasks[maskIdx] || 'none';
 
         const activeFilters = [];
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
@@ -198,6 +313,28 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
 
         const ghost1Opacity = opacity * (currentDelay / 100) * 0.6;
         const ghost2Opacity = opacity * (currentDelay / 100) * 0.3;
+
+        if (isCredits) {
+          return (
+            <React.Fragment key={index}>
+              <div style={{ ...baseStyle, overflow: 'hidden', opacity: opacity, mixBlendMode: currentBlendMode }}>
+                {renderCreditsList(creditsMainRef)}
+              </div>
+              
+              {currentDelay > 1 && (
+                <div style={{ ...baseStyle, overflow: 'hidden', opacity: ghost1Opacity, mixBlendMode: 'screen' }}>
+                  {renderCreditsList(creditsGhost1Ref)}
+                </div>
+              )}
+
+              {currentDelay > 1 && (
+                <div style={{ ...baseStyle, overflow: 'hidden', opacity: ghost2Opacity, mixBlendMode: 'screen' }}>
+                  {renderCreditsList(creditsGhost2Ref)}
+                </div>
+              )}
+            </React.Fragment>
+          );
+        }
 
         return (
           <React.Fragment key={index}>
@@ -234,9 +371,9 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         );
       })}
       
-      {videos.length === 0 && (
+      {videos.length === 0 && opacities[4] === 0 && (
         <div style={{ color: '#555', display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-          <h2>Загрузите видео (до 4 шт.)</h2>
+          <h2>Загрузите видео (до 4 шт.) или включите титры (Ch 49 + Knob 73)</h2>
         </div>
       )}
     </div>
