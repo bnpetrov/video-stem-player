@@ -33,38 +33,55 @@ const MOVIE_TITLES = [
   "30. VIRTUAL INSANITY"
 ];
 
+// КУРАТОРСКАЯ ПАЛИТРА КИНО-ФИЛЬТРОВ (11 пресетов)
 const cssFilters = [
-  'none',                                    
-  'sepia(1) saturate(3) hue-rotate(320deg)', 
-  'invert(1)',                               
-  'sepia(1) saturate(3) hue-rotate(180deg)', 
-  'blur(4px) contrast(3)',                   
-  'sepia(1) saturate(4) hue-rotate(45deg)',  
-  'contrast(2) brightness(0.6)',             
-  'sepia(0.8) hue-rotate(90deg) saturate(4)',
-  'invert(1) contrast(1.5)',                 
-  'sepia(1) hue-rotate(270deg) saturate(3)', 
-  'brightness(1.5) contrast(1.2)'            
+  'none',                                                                      // 0: Clean Original
+  'sepia(0.85) contrast(1.25) brightness(0.95) saturate(1.4)',                 // 1: 35mm Vintage Sepia
+  'sepia(0.6) hue-rotate(135deg) saturate(2.6) contrast(1.2)',                 // 2: Wong Kar-wai Emerald
+  'sepia(0.7) hue-rotate(285deg) saturate(2.8) contrast(1.25)',                // 3: Neon Giallo (Magenta/Violet)
+  'grayscale(1) contrast(1.6) brightness(1.05)',                               // 4: Silver Film Noir
+  'sepia(0.9) hue-rotate(345deg) saturate(3.2) contrast(1.15)',                // 5: Tarkovsky Amber / Solaris
+  'sepia(0.7) hue-rotate(175deg) saturate(2.5) contrast(1.3)',                 // 6: Cyber Cyan / Night Drive
+  'contrast(1.75) saturate(0.45) brightness(0.9)',                             // 7: Bleach Bypass
+  'blur(3px) contrast(1.45) saturate(1.8) brightness(1.05)',                   // 8: Dream Sequence / Halation
+  'invert(0.92) hue-rotate(180deg) contrast(1.3)',                             // 9: Thermal / X-Ray Negative
+  'sepia(1) hue-rotate(65deg) saturate(3.5) contrast(1.35)'                    // 10: Festival Acid Lime
 ];
 
+// ИНДИВИДУАЛЬНЫЕ МАСКИ КАНАЛОВ (Двигаются и зумируются вместе с видео!)
 const clipMasks = [
-  'none', 
-  'circle(50% at 50% 50%)', 
-  'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', 
-  'polygon(0 0, 25% 0, 25% 100%, 0% 100%, 50% 0, 75% 0, 75% 100%, 50% 100%)', 
-  'polygon(0 10%, 100% 10%, 100% 30%, 0 30%, 0 50%, 100% 50%, 100% 70%, 0 70%, 0 90%, 100% 90%, 100% 100%, 0 100%)', 
-  'polygon(10% 0, 20% 0, 20% 100%, 10% 100%, 30% 0, 40% 0, 40% 100%, 30% 100%, 50% 0, 60% 0, 60% 100%, 50% 100%, 70% 0, 80% 0, 80% 100%, 70% 100%, 90% 0, 100% 0, 100% 100%, 90% 100%)', 
-  'polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)', 
-  'polygon(0 0, 0 100%, 20% 100%, 20% 20%, 80% 20%, 80% 80%, 20% 80%, 20% 100%, 100% 100%, 100% 0)', 
-  'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' 
+  'none',                                                                                                    // 0: Выкл
+  'circle(24vh at 50% 50%)',                                                                                 // 1: Идеальный круг в центре
+  'inset(12% 33% 12% 33%)',                                                                                  // 2: Ровный квадрат в центре
+  'polygon(50% 8%, 76% 50%, 50% 92%, 24% 50%)',                                                              // 3: Строгий ромб
+  'inset(28% 8% 28% 8%)',                                                                                    // 4: Широкоэкранное каше (Cinemascope)
+  'inset(8% 36% 8% 36%)',                                                                                    // 5: Вертикальный монолит
+  'polygon(15% 10%, 85% 10%, 50% 90%)',                                                                      // 6: Треугольная призма
+  'polygon(0% 0%, 0% 100%, 18% 100%, 18% 18%, 82% 18%, 82% 82%, 18% 82%, 18% 100%, 100% 100%, 100% 0%)',     // 7: Прямоугольная рамка с окном
+  'polygon(18% 8%, 82% 8%, 56% 50%, 82% 92%, 18% 92%, 44% 50%)'                                              // 8: Двойная призма (Песочные часы)
 ];
 
-export default function VideoMixer({ videos, opacities, volumes, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, maskLevels, positions, zIndices }) {
+// SPLIT-3: 8 ИДЕАЛЬНО РОВНЫХ ВЕРТИКАЛЬНЫХ ПОЛОС (Без косых срезов)
+const slicer8Combo = [
+  'polygon(0% 0%, 0% 100%, 12.5% 100%, 12.5% 0%, 37.5% 0%, 37.5% 100%, 62.5% 100%, 62.5% 0%, 75% 0%, 75% 100%, 87.5% 100%, 87.5% 0%)',
+  'polygon(0% 0%, 0% 100%, 25% 100%, 25% 0%, 62.5% 0%, 62.5% 100%, 87.5% 100%, 87.5% 0%)',
+  'polygon(12.5% 0%, 12.5% 100%, 37.5% 100%, 37.5% 0%, 50% 0%, 50% 100%, 62.5% 100%, 62.5% 0%, 87.5% 0%, 87.5% 100%, 100% 100%, 100% 0%)',
+  'polygon(25% 0%, 25% 100%, 50% 100%, 50% 0%, 62.5% 0%, 62.5% 100%, 75% 100%, 75% 0%, 87.5% 0%, 87.5% 100%, 100% 100%, 100% 0%)'
+];
+
+// SPLIT-4: ЧИСТЫЕ ПЕРЕКРЫВАЮЩИЕСЯ КОЛОННЫ
+const wideOverlapColumns = [
+  'inset(0% 62% 0% 0%)',   // Канал A: 0% - 38%
+  'inset(0% 38% 0% 22%)',  // Канал B: 22% - 62%
+  'inset(0% 22% 0% 38%)',  // Канал C: 38% - 78%
+  'inset(0% 0% 0% 62%)'    // Канал D: 62% - 100%
+];
+
+export default function VideoMixer({ videos, opacities, volumes, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, maskLevels, masterMask, positions, zIndices }) {
   const videoRefs = useRef([]);
   const ghost1Refs = useRef([]);
   const ghost2Refs = useRef([]);
 
-  // Рефы для 5-го канала (Титры)
   const creditsMainRef = useRef(null);
   const creditsGhost1Ref = useRef(null);
   const creditsGhost2Ref = useRef(null);
@@ -72,7 +89,8 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
   
   const delayLevelsRef = useRef(delayLevels);
   const playbackRatesRef = useRef(playbackRates);
-  const blendModes = ['normal', 'screen', 'lighten', 'luminosity', 'screen'];
+
+  const upperLayerBlends = ['screen', 'lighten', 'exclusion', 'screen'];
 
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
@@ -92,8 +110,8 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
 
         if (!main) return;
 
-        const offset1 = (delayLevel / 100) * 0.5;
-        const offset2 = (delayLevel / 100) * 1.0;
+        const offset1 = (delayLevel / 100) * 0.45;
+        const offset2 = (delayLevel / 100) * 0.9;
 
         const syncGhostTime = (ghost, offset) => {
           if (!ghost) return;
@@ -132,7 +150,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
 
       const rate = playbackRatesRef.current[4] !== undefined ? playbackRatesRef.current[4] : 1;
       const delay = delayLevelsRef.current[4] || 0;
-      const baseSpeed = 90; // Пикселей в секунду при скорости 1.0x
+      const baseSpeed = 90;
 
       const singleListHeight = creditsMainRef.current ? creditsMainRef.current.scrollHeight / 2 : 1800;
 
@@ -140,15 +158,14 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         creditsPosRef.current = (creditsPosRef.current + (baseSpeed * rate * dt) / 1000) % singleListHeight;
       }
 
-      // Двигаем сверху вниз: из -singleListHeight к 0
       const mainY = -singleListHeight + creditsPosRef.current;
       if (creditsMainRef.current) {
         creditsMainRef.current.style.transform = `translateY(${mainY}px)`;
       }
 
       if (delay > 1 && singleListHeight > 0) {
-        const lag1 = (delay / 100) * 60;
-        const lag2 = (delay / 100) * 120;
+        const lag1 = (delay / 100) * 55;
+        const lag2 = (delay / 100) * 110;
         const pos1 = (creditsPosRef.current - lag1 + singleListHeight) % singleListHeight;
         const pos2 = (creditsPosRef.current - lag2 + singleListHeight) % singleListHeight;
 
@@ -167,7 +184,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
     return () => cancelAnimationFrame(reqId);
   }, []);
 
-  // СИНХРОНИЗАЦИЯ ВИДЕО
+  // СИНХРОНИЗАЦИЯ АУДИО И СКОРОСТИ ВИДЕО
   useEffect(() => {
     videos.forEach((_, index) => {
       if (videoRefs.current[index]) {
@@ -198,7 +215,135 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
     });
   }, [opacities, volumes, videos, playbackRates]);
 
-  const activeCount = opacities.filter(op => op > 0).length;
+  // Динамическое определение самого нижнего видимого видеоканала для плотной подложки 'normal'
+  const visibleVideoIndices = [0, 1, 2, 3].filter(i => videos[i] && (opacities[i] || 0) > 0.01);
+  let bottomVisibleChannel = 0;
+  if (visibleVideoIndices.length > 0) {
+    bottomVisibleChannel = visibleVideoIndices.reduce((lowestIdx, currIdx) => {
+      const zLow = zIndices && zIndices[lowestIdx] !== undefined ? zIndices[lowestIdx] : lowestIdx;
+      const zCurr = zIndices && zIndices[currIdx] !== undefined ? zIndices[currIdx] : currIdx;
+      return zCurr < zLow ? currIdx : lowestIdx;
+    }, visibleVideoIndices[0]);
+  }
+
+  const getPairBlend = (idxA, idxB, currentIdx, upperBlend = 'screen') => {
+    const visA = videos[idxA] && (opacities[idxA] || 0) > 0.01;
+    const visB = videos[idxB] && (opacities[idxB] || 0) > 0.01;
+    if (!visA || !visB) return 'normal';
+    const zA = zIndices ? zIndices[idxA] : idxA;
+    const zB = zIndices ? zIndices[idxB] : idxB;
+    const lowerIdx = zA <= zB ? idxA : idxB;
+    return currentIdx === lowerIdx ? 'normal' : upperBlend;
+  };
+
+  // ВЫЧИСЛЕНИЕ МАСКИ (ОТДЕЛЬНО ДЛЯ МАСТЕРА И КАНАЛА) И РЕЖИМА НАЛОЖЕНИЯ
+  const getMaskAndBlend = (index) => {
+    const individualMaskIdx = maskLevels && maskLevels[index] !== undefined ? maskLevels[index] : 0;
+    const individualMask = clipMasks[individualMaskIdx] || 'none';
+
+    if (index === 4) {
+      return {
+        masterClip: 'none',
+        channelClip: individualMask,
+        blend: 'screen'
+      };
+    }
+
+    const dynamicFreeBlend = (visibleVideoIndices.length <= 1 || index === bottomVisibleChannel)
+      ? 'normal'
+      : upperLayerBlends[index % upperLayerBlends.length];
+
+    // Когда мастер-пресет выключен, маска висит на самом видео и двигается вместе с ним
+    if (!masterMask || masterMask === 0) {
+      return {
+        masterClip: 'none',
+        channelClip: individualMask,
+        blend: dynamicFreeBlend
+      };
+    }
+
+    // Когда включен мастер-пресет, сетка фиксируется на внешнем контейнере, а индивидуальная маска продолжает двигаться внутри!
+    if (masterMask === 1) {
+      return {
+        masterClip: index < 2 ? 'inset(0% 0% 50% 0%)' : 'inset(50% 0% 0% 0%)',
+        channelClip: individualMask,
+        blend: index < 2 ? getPairBlend(0, 1, index, 'screen') : getPairBlend(2, 3, index, 'screen')
+      };
+    }
+
+    if (masterMask === 2) {
+      return {
+        masterClip: index < 2 ? 'inset(0% 50% 0% 0%)' : 'inset(0% 0% 0% 50%)',
+        channelClip: individualMask,
+        blend: index < 2 ? getPairBlend(0, 1, index, 'screen') : getPairBlend(2, 3, index, 'screen')
+      };
+    }
+
+    if (masterMask === 3) {
+      return {
+        masterClip: slicer8Combo[index],
+        channelClip: individualMask,
+        blend: index === bottomVisibleChannel ? 'normal' : 'screen'
+      };
+    }
+
+    if (masterMask === 4) {
+      return {
+        masterClip: wideOverlapColumns[index],
+        channelClip: individualMask,
+        blend: index === bottomVisibleChannel ? 'normal' : 'lighten'
+      };
+    }
+
+    if (masterMask === 5) {
+      const grid2x2 = [
+        'inset(0% 50% 50% 0%)',
+        'inset(0% 0% 50% 50%)',
+        'inset(50% 50% 0% 0%)',
+        'inset(50% 0% 0% 50%)'
+      ];
+      return { masterClip: grid2x2[index], channelClip: individualMask, blend: 'normal' };
+    }
+
+    if (masterMask === 6) {
+      if (index < 2) {
+        return {
+          masterClip: 'circle(24vh at 50% 50%)',
+          channelClip: individualMask,
+          blend: getPairBlend(0, 1, index, 'screen')
+        };
+      }
+      return {
+        masterClip: 'inset(0% 0% 0% 0%)',
+        channelClip: individualMask,
+        blend: getPairBlend(2, 3, index, 'lighten')
+      };
+    }
+
+    if (masterMask === 7) {
+      const xTriangles = [
+        'polygon(0% 0%, 100% 0%, 50% 50%)',
+        'polygon(100% 0%, 100% 100%, 50% 50%)',
+        'polygon(0% 100%, 100% 100%, 50% 50%)',
+        'polygon(0% 0%, 0% 100%, 50% 50%)'
+      ];
+      return { masterClip: xTriangles[index], channelClip: individualMask, blend: 'normal' };
+    }
+
+    if (masterMask === 8) {
+      if (index < 2) {
+        return {
+          masterClip: 'inset(0% 25% 0% 25%)',
+          channelClip: individualMask,
+          blend: getPairBlend(0, 1, index, 'screen')
+        };
+      }
+      if (index === 2) return { masterClip: 'inset(0% 75% 0% 0%)', channelClip: individualMask, blend: 'normal' };
+      return { masterClip: 'inset(0% 0% 0% 75%)', channelClip: individualMask, blend: 'normal' };
+    }
+
+    return { masterClip: 'none', channelClip: individualMask, blend: dynamicFreeBlend };
+  };
 
   const renderCreditsList = (ref) => (
     <div
@@ -214,7 +359,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         fontSize: '2.2rem',
         fontWeight: 'bold',
         letterSpacing: '3px',
-        textShadow: '0 2px 12px rgba(0,0,0,0.9)',
+        textShadow: '0 2px 14px rgba(0,0,0,0.95)',
         willChange: 'transform'
       }}
     >
@@ -229,17 +374,22 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
   return (
     <div style={{
       position: 'relative', width: '100%', height: '60vh',
-      backgroundColor: '#000', overflow: 'hidden', borderRadius: '12px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+      backgroundColor: '#050505', overflow: 'hidden', borderRadius: '12px',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.6)'
     }}>
       
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           {[0, 1, 2, 3, 4].map((index) => {
-            const pixelSize = pixelLevels && pixelLevels[index] ? Math.max(0.01, pixelLevels[index]) : 0.01;
+            // 1. БЕЗ МОРГАНИЯ: Стабильные координаты feFlood (x=4 y=4) + плавный радиус без пересчета сетки тайлов
+            const rawPixel = pixelLevels && pixelLevels[index] ? pixelLevels[index] : 0;
+            const pixelSize = rawPixel > 0 ? Math.max(0.01, Math.pow(rawPixel / 100, 1.35) * 65) : 0.01;
+
+            // 3. ПОЛНЫЙ ДИАПАЗОН THRESHOLD: Сохраняем мягкий шаг, но позволяем увести от чистого белого до полного черного (0.0 .. 1.05)
             const thresh = thresholdLevels && thresholdLevels[index] ? thresholdLevels[index] : 0;
-            const cutoff = thresh / 100; 
-            const intensity = Math.min(1, thresh / 20); 
+            const cutoff = (thresh / 100) * 1.05; 
+            const slope = 25 + (thresh / 100) * 80;
+            const intensity = Math.min(1, thresh / 18); 
 
             return (
               <React.Fragment key={index}>
@@ -250,16 +400,17 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
                   <feComposite in="SourceGraphic" in2="a" operator="in"/>
                   <feMorphology operator="dilate" radius={Math.max(0, pixelSize / 2)}/>
                 </filter>
-                <filter id={`threshold-${index}`}>
+
+                <filter id={`threshold-${index}`} colorInterpolationFilters="sRGB">
                   <feColorMatrix in="SourceGraphic" type="matrix" result="gray" values="
-                    0.2126 0.7152 0.0722 0 0
-                    0.2126 0.7152 0.0722 0 0
-                    0.2126 0.7152 0.0722 0 0
+                    0.299 0.587 0.114 0 0
+                    0.299 0.587 0.114 0 0
+                    0.299 0.587 0.114 0 0
                     0 0 0 1 0" />
                   <feComponentTransfer in="gray" result="hardThresh">
-                    <feFuncR type="linear" slope="255" intercept={-255 * cutoff}/>
-                    <feFuncG type="linear" slope="255" intercept={-255 * cutoff}/>
-                    <feFuncB type="linear" slope="255" intercept={-255 * cutoff}/>
+                    <feFuncR type="linear" slope={slope} intercept={-slope * cutoff}/>
+                    <feFuncG type="linear" slope={slope} intercept={-slope * cutoff}/>
+                    <feFuncB type="linear" slope={slope} intercept={-slope * cutoff}/>
                   </feComponentTransfer>
                   <feComposite in="hardThresh" in2="SourceGraphic" operator="arithmetic" k1="0" k2={intensity} k3={1 - intensity} k4="0" />
                 </filter>
@@ -276,21 +427,19 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         if (!isCredits && !videoSrc) return null;
 
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
-        const currentBlendMode = activeCount <= 1 ? 'normal' : blendModes[index];
+        const { masterClip, channelClip, blend: currentBlendMode } = getMaskAndBlend(index);
+
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
         const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
         
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
-        const isThresholded = thresholdLevels && thresholdLevels[index] > 0.1; 
+        const isThresholded = thresholdLevels && thresholdLevels[index] > 0.5; 
         const currentDelay = delayLevels && delayLevels[index] !== undefined ? delayLevels[index] : 0;
         
         const filterIdx = filterLevels && filterLevels[index] !== undefined ? Math.round(filterLevels[index]) : 0;
         const safeFilterIdx = Math.max(0, Math.min(cssFilters.length - 1, filterIdx));
         const selectedCssFilter = cssFilters[safeFilterIdx];
-
-        const maskIdx = maskLevels && maskLevels[index] !== undefined ? maskLevels[index] : 0;
-        const selectedMask = clipMasks[maskIdx] || 'none';
 
         const activeFilters = [];
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
@@ -298,52 +447,80 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
-        const baseStyle = {
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+        const effectiveZIndex = isCredits
+          ? 100
+          : (masterMask === 6 && index < 4)
+            ? (index < 2 ? 20 + (currentZIndex % 10) : currentZIndex % 10)
+            : currentZIndex;
+
+        // Внешний слой держит ТОЛЬКО мастер-сплит (если он включен) и режим наложения
+        const masterSlotStyle = {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          clipPath: masterClip,
+          mixBlendMode: currentBlendMode,
+          transition: 'clip-path 0.2s ease-out, opacity 0.1s ease-out',
+          pointerEvents: 'none',
+          zIndex: effectiveZIndex,
+          overflow: 'hidden'
+        };
+
+        // 2. Внутренний слой держит ИНДИВИДУАЛЬНУЮ МАСКУ КАНАЛА + ЗУМ + ДЖОЙСТИК (маска двигается вместе с видео!)
+        const mediaTransformStyle = {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
           objectFit: 'cover',
           translate: `${currentPos.x}% ${currentPos.y}%`,
           scale: currentZoom,
-          filter: filterStyle, 
+          clipPath: channelClip,
+          filter: filterStyle,
           imageRendering: isPixelated ? 'pixelated' : 'auto',
-          clipPath: selectedMask, 
-          transition: 'opacity 0.1s ease-out, scale 0.1s linear, clip-path 0.2s ease-out', 
-          pointerEvents: 'none',
-          zIndex: currentZIndex 
+          transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
+          pointerEvents: 'none'
         };
 
-        const ghost1Opacity = opacity * (currentDelay / 100) * 0.6;
-        const ghost2Opacity = opacity * (currentDelay / 100) * 0.3;
+        const ghost1Filter = `${filterStyle !== 'none' ? filterStyle : ''} hue-rotate(25deg) saturate(1.4)`.trim();
+        const ghost2Filter = `${filterStyle !== 'none' ? filterStyle : ''} hue-rotate(-35deg) saturate(1.6)`.trim();
+
+        const ghost1Opacity = opacity * (currentDelay / 100) * 0.65;
+        const ghost2Opacity = opacity * (currentDelay / 100) * 0.38;
 
         if (isCredits) {
           return (
-            <React.Fragment key={index}>
-              <div style={{ ...baseStyle, overflow: 'hidden', opacity: opacity, mixBlendMode: currentBlendMode }}>
+            <div key={index} style={{ ...masterSlotStyle, opacity }}>
+              <div style={{ ...mediaTransformStyle, overflow: 'hidden' }}>
                 {renderCreditsList(creditsMainRef)}
               </div>
               
               {currentDelay > 1 && (
-                <div style={{ ...baseStyle, overflow: 'hidden', opacity: ghost1Opacity, mixBlendMode: 'screen' }}>
+                <div style={{ ...mediaTransformStyle, overflow: 'hidden', filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}>
                   {renderCreditsList(creditsGhost1Ref)}
                 </div>
               )}
 
               {currentDelay > 1 && (
-                <div style={{ ...baseStyle, overflow: 'hidden', opacity: ghost2Opacity, mixBlendMode: 'screen' }}>
+                <div style={{ ...mediaTransformStyle, overflow: 'hidden', filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}>
                   {renderCreditsList(creditsGhost2Ref)}
                 </div>
               )}
-            </React.Fragment>
+            </div>
           );
         }
 
         return (
-          <React.Fragment key={index}>
+          <div key={index} style={{ ...masterSlotStyle, opacity }}>
             <video
               ref={el => videoRefs.current[index] = el}
               src={videoSrc}
               autoPlay
               loop
-              style={{ ...baseStyle, opacity: opacity, mixBlendMode: currentBlendMode }}
+              style={mediaTransformStyle}
             />
             
             {currentDelay > 1 && (
@@ -353,7 +530,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
                 autoPlay
                 loop
                 muted 
-                style={{ ...baseStyle, opacity: ghost1Opacity, mixBlendMode: 'screen' }}
+                style={{ ...mediaTransformStyle, filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}
               />
             )}
 
@@ -364,10 +541,10 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
                 autoPlay
                 loop
                 muted
-                style={{ ...baseStyle, opacity: ghost2Opacity, mixBlendMode: 'screen' }}
+                style={{ ...mediaTransformStyle, filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}
               />
             )}
-          </React.Fragment>
+          </div>
         );
       })}
       

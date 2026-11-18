@@ -6,7 +6,7 @@ export default function App() {
   const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
   const [videos, setVideos] = useState([]);
   
-  // 5 каналов: 0..3 — видео, 4 — титры (клавиша 49)
+  // 5 каналов: 0..3 — видео, 4 — титры кинофестиваля (клавиша 49)
   const [opacities, setOpacities] = useState([1, 0, 0, 0, 0]);
   const [volumes, setVolumes] = useState([1, 1, 1, 1, 1]);
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1, 1]); 
@@ -16,6 +16,7 @@ export default function App() {
   const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0, 0]); 
   const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0, 0]); 
   const [maskLevels, setMaskLevels] = useState([0, 0, 0, 0, 0]); 
+  const [masterMask, setMasterMask] = useState(0); // 0 = Free Mix, 1..8 = Выставочные сплит-композиции
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
   const [zIndices, setZIndices] = useState([0, 1, 2, 3, 4]); 
 
@@ -44,12 +45,12 @@ export default function App() {
       const currentChannel = activeChannelRef.current;
 
       if ((sx !== 0 || sy !== 0) && currentChannel !== null) {
-        const speed = 0.7; 
+        const speed = 0.65; 
         let newX = positionsRef.current[currentChannel].x + (sx * speed);
         let newY = positionsRef.current[currentChannel].y - (sy * speed); 
 
-        newX = Math.max(-50, Math.min(50, newX));
-        newY = Math.max(-50, Math.min(50, newY));
+        newX = Math.max(-45, Math.min(45, newX));
+        newY = Math.max(-45, Math.min(45, newY));
 
         positionsRef.current[currentChannel] = { x: newX, y: newY };
         setPositions([...positionsRef.current]);
@@ -107,14 +108,14 @@ export default function App() {
       });
     };
 
-    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    
-    if (knob === 71) applyRelativeEffect(0, 100, 1.0, setPixelLevels);       
-    if (knob === 72) applyRelativeEffect(0, 10, 0.2, setFilterLevels);       
-    if (knob === 73) applyRelativeEffect(0, 1.0, 0.02, setOpacities);
-    if (knob === 74) applyRelativeEffect(0.25, 4.0, 0.04, setZoomLevels);    
-    if (knob === 75) applyRelativeEffect(0, 100, 1.0, setThresholdLevels);   
-    if (knob === 76) applyRelativeEffect(0, 100, 1.0, setDelayLevels);       
-    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);
+    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    // Скорость и фриз
+    if (knob === 71) applyRelativeEffect(0, 100, 1.2, setPixelLevels);       // Мозаика / Пикселизация
+    if (knob === 72) applyRelativeEffect(0, 10, 0.18, setFilterLevels);      // Кино-колористика (11 пресетов)
+    if (knob === 73) applyRelativeEffect(0, 1.0, 0.025, setOpacities);       // Плавная непрозрачность
+    if (knob === 74) applyRelativeEffect(0.35, 3.5, 0.035, setZoomLevels);   // Кадрированный зум
+    if (knob === 75) applyRelativeEffect(0, 100, 1.2, setThresholdLevels);   // Графический постеризатор (Threshold)
+    if (knob === 76) applyRelativeEffect(0, 100, 1.2, setDelayLevels);       // Хроматическое эхо (Delay)
+    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);              // Балансная громкость
 
   }, [knobEvent]);
 
@@ -124,14 +125,19 @@ export default function App() {
     const { note, velocity, type } = noteOnEvent;
 
     if (type === 'noteOn' && velocity > 0) {
+      // Нижний ряд пэдов (36-39): Вывод канала на верхний план
       if (note >= 36 && note <= 39) {
         const trackIndex = note - 36;
         setZIndices(prev => {
-          const maxZ = Math.max(...prev);
-          return prev.map((z, idx) => (idx === trackIndex ? maxZ + 1 : z));
+          const maxZ = Math.max(...prev.slice(0, 4));
+          return prev.map((z, idx) => {
+            if (idx === 4) return maxZ + 2; // Титры всегда остаются самым верхним слоем
+            return idx === trackIndex ? maxZ + 1 : z;
+          });
         });
       }
       
+      // Верхний ряд пэдов (40-43): Мгновенный Toggle Mute канала
       if (note >= 40 && note <= 43) {
         const trackIndex = note - 40;
         setOpacities(prev => prev.map((op, idx) => {
@@ -142,19 +148,17 @@ export default function App() {
         }));
       }
 
+      // Белые клавиши (48..60): Маски каналов (с Shift) или Мастер-пресеты (без Shift)
       const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
       if (MASK_KEYS.includes(note)) {
         const maskIndex = MASK_KEYS.indexOf(note) + 1; 
         const currentChannel = activeChannelRef.current;
 
-        setMaskLevels(prev => {
-          if (currentChannel !== null) {
-            return prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m));
-          } else {
-            const isAllMasked = prev.every(m => m === maskIndex);
-            return prev.map(() => (isAllMasked ? 0 : maskIndex));
-          }
-        });
+        if (currentChannel !== null) {
+          setMaskLevels(prev => prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m)));
+        } else {
+          setMasterMask(prev => (prev === maskIndex ? 0 : maskIndex));
+        }
       }
     }
   }, [noteOnEvent]);
@@ -166,7 +170,7 @@ export default function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '20px' }}>LAB52</h1>
+      <h1 style={{ marginBottom: '20px', letterSpacing: '2px' }}>LAB52</h1>
       
       <VideoMixer 
         videos={videos} 
@@ -179,6 +183,7 @@ export default function App() {
         filterLevels={filterLevels}
         delayLevels={delayLevels}
         maskLevels={maskLevels}
+        masterMask={masterMask}
         positions={positions}
         zIndices={zIndices}
       />
@@ -215,7 +220,10 @@ export default function App() {
             z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
           <p style={{ color: '#00e676' }}>
-            mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-' + m}`).join(' | ')}
+            ch mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-' + m}`).join(' | ')}
+          </p>
+          <p style={{ color: '#ff00ff', fontWeight: 'bold' }}>
+            master preset: {masterMask === 0 ? 'OFF (Free Mix)' : `SPLIT-${masterMask}`}
           </p>
           
           <hr style={{ borderColor: '#444' }}/>
