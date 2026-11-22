@@ -7,13 +7,18 @@ export function useMidi() {
   const [stickEvent, setStickEvent] = useState(null); 
   
   const [heldChannel, setHeldChannel] = useState(null); 
+  const [isSaveHeld, setIsSaveHeld] = useState(false);
   const [heldPads, setHeldPads] = useState({});
   const pressureTrackRef = useRef({});
+  const saveHeldRef = useRef(false);
 
   // 49, 51, 54, 56 — видео (0..3), 58 — 5-й канал (Титры)
   const CHANNEL_KEYS = [49, 51, 54, 56, 58]; 
   const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
   const RANDOM_KEYS = [66, 68, 70];
+  const SAVE_KEY = 61;
+  const RESET_KEY = 63;
+  const PRESET_KEYS = [62, 64, 65, 67, 69, 71, 72];
 
   useEffect(() => {
     if (navigator.requestMIDIAccess) {
@@ -67,14 +72,25 @@ export function useMidi() {
         }
       }
 
+      if (note === SAVE_KEY) {
+        if (isNoteOn) {
+          saveHeldRef.current = true;
+          setIsSaveHeld(true);
+        } else if (isNoteOff) {
+          saveHeldRef.current = false;
+          setIsSaveHeld(false);
+        }
+      }
+
       const isPad = note >= 36 && note <= 43;
       const isMaskKey = MASK_KEYS.includes(note);
       const isRandomKey = RANDOM_KEYS.includes(note);
+      const isPresetOrReset = note === RESET_KEY || PRESET_KEYS.includes(note);
 
-      if (isNoteOn && (isPad || isMaskKey || isRandomKey)) {
+      if (isNoteOn && (isPad || isMaskKey || isRandomKey || isPresetOrReset)) {
         pressureTrackRef.current[note] = { val: velocity, time: now, releasing: false };
         setHeldPads(prev => ({ ...prev, [note]: velocity }));
-        setNoteOnEvent({ note, velocity, type: 'noteOn', time: now });
+        setNoteOnEvent({ note, velocity, type: 'noteOn', isSaveHeld: saveHeldRef.current, time: now });
       } 
       else if ((isPolyAftertouch || isChannelAftertouch) && (isPad || isChannelAftertouch)) {
         const targetNote = isPolyAftertouch ? note : Number(Object.keys(pressureTrackRef.current)[0]);
@@ -96,9 +112,9 @@ export function useMidi() {
 
         pressureTrackRef.current[targetNote] = { val: newPressure, time: now, releasing: false };
         setHeldPads(p => (p[targetNote] !== undefined ? { ...p, [targetNote]: newPressure } : p));
-        setNoteOnEvent({ note: targetNote, velocity: newPressure, type: 'aftertouch', time: now });
+        setNoteOnEvent({ note: targetNote, velocity: newPressure, type: 'aftertouch', isSaveHeld: saveHeldRef.current, time: now });
       } 
-      else if (isNoteOff && (isPad || isMaskKey || isRandomKey)) {
+      else if (isNoteOff && (isPad || isMaskKey || isRandomKey || isPresetOrReset)) {
         delete pressureTrackRef.current[note];
         setHeldPads(prev => {
           const next = { ...prev };
@@ -109,5 +125,5 @@ export function useMidi() {
     }
   }, []);
 
-  return { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldPads };
+  return { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, isSaveHeld, heldPads };
 }

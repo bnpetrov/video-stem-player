@@ -9,24 +9,82 @@ const randRange = (min, max) => min + Math.random() * (max - min);
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+const PRESET_SLOT_KEYS = [62, 64, 65, 67, 69, 71, 72];
+const LOCKED_PRESET_KEY = 72;
+
+// НАЧАЛЬНОЕ СОСТОЯНИЕ (используется при старте и для сброса по клавише 63)
+const INITIAL_STATE = {
+  rawOpacities: [1, null, null, null, null],
+  volumes: [1, 1, 1, 1, 1],
+  playbackRates: [1, 1, 1, 1, 1],
+  zoomLevels: [1, 1, 1, 1, 1],
+  pixelLevels: [0, 0, 0, 0, 0],
+  thresholdLevels: [0, 0, 0, 0, 0],
+  filterLevels: [0, 0, 0, 0, 0],
+  delayLevels: [0, 0, 0, 0, 0],
+  maskLevels: [0, 0, 0, 0, 0],
+  masterMask: 0,
+  positions: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+  zIndices: [0, 1, 2, 3, 4],
+  savedOpacities: [1, 1, 1, 1, 1]
+};
+
+// ЗАХАРДКОЖЕННЫЙ ПРЕСЕТ НА КЛАВИШЕ 72 (не перезаписывается через Save — замени значения на свои)
+const HARDCODED_PRESET_72 = {
+  rawOpacities: [0.85, 0.75, 0.6, null, 0.9],
+  volumes: [1, 0.8, 0.6, 1, 1],
+  playbackRates: [0.75, 1.25, 1.0, 1.0, 1.0],
+  zoomLevels: [1.15, 1.4, 1.0, 1.0, 1.0],
+  pixelLevels: [0, 16, 0, 0, 0],
+  thresholdLevels: [0, 0, 35, 0, 0],
+  filterLevels: [3, 6, 1, 0, 0],
+  delayLevels: [35, 0, 50, 0, 20],
+  maskLevels: [0, 1, 0, 0, 0],
+  masterMask: 3,
+  positions: [{ x: 0, y: 0 }, { x: -8, y: 5 }, { x: 10, y: -5 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+  zIndices: [10, 11, 12, 9, 20],
+  savedOpacities: [0.85, 0.75, 0.6, 1, 0.9]
+};
+
+const cloneSnapshot = (s) => ({
+  rawOpacities: [...s.rawOpacities],
+  volumes: [...s.volumes],
+  playbackRates: [...s.playbackRates],
+  zoomLevels: [...s.zoomLevels],
+  pixelLevels: [...s.pixelLevels],
+  thresholdLevels: [...s.thresholdLevels],
+  filterLevels: [...s.filterLevels],
+  delayLevels: [...s.delayLevels],
+  maskLevels: [...s.maskLevels],
+  masterMask: s.masterMask,
+  positions: s.positions.map(p => ({ x: p.x, y: p.y })),
+  zIndices: [...s.zIndices],
+  savedOpacities: [...s.savedOpacities]
+});
+
 export default function App() {
-  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
+  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, isSaveHeld } = useMidi();
   const [videos, setVideos] = useState([]);
   
   // 5 каналов: 0..3 — видео (49, 51, 54, 56), 4 — титры кинофестиваля (58)
-  // null = нулевой канал (мастер его не трогает); число <= 0 = активный канал, уведенный мастером в фейдаут
-  const [rawOpacities, setRawOpacities] = useState([1, null, null, null, null]);
-  const [volumes, setVolumes] = useState([1, 1, 1, 1, 1]);
-  const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1, 1]); 
-  const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1, 1]); 
-  const [pixelLevels, setPixelLevels] = useState([0, 0, 0, 0, 0]); 
-  const [thresholdLevels, setThresholdLevels] = useState([0, 0, 0, 0, 0]); 
-  const [filterLevels, setFilterLevels] = useState([0, 0, 0, 0, 0]); 
-  const [delayLevels, setDelayLevels] = useState([0, 0, 0, 0, 0]); 
-  const [maskLevels, setMaskLevels] = useState([0, 0, 0, 0, 0]); 
-  const [masterMask, setMasterMask] = useState(0); // 0 = Free Mix, 1..8 = Выставочные сплит-композиции
-  const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
-  const [zIndices, setZIndices] = useState([0, 1, 2, 3, 4]); 
+  const [rawOpacities, setRawOpacities] = useState(INITIAL_STATE.rawOpacities);
+  const [volumes, setVolumes] = useState(INITIAL_STATE.volumes);
+  const [playbackRates, setPlaybackRates] = useState(INITIAL_STATE.playbackRates); 
+  const [zoomLevels, setZoomLevels] = useState(INITIAL_STATE.zoomLevels); 
+  const [pixelLevels, setPixelLevels] = useState(INITIAL_STATE.pixelLevels); 
+  const [thresholdLevels, setThresholdLevels] = useState(INITIAL_STATE.thresholdLevels); 
+  const [filterLevels, setFilterLevels] = useState(INITIAL_STATE.filterLevels); 
+  const [delayLevels, setDelayLevels] = useState(INITIAL_STATE.delayLevels); 
+  const [maskLevels, setMaskLevels] = useState(INITIAL_STATE.maskLevels); 
+  const [masterMask, setMasterMask] = useState(INITIAL_STATE.masterMask);
+  const [positions, setPositions] = useState(INITIAL_STATE.positions.map(p => ({ ...p }))); 
+  const [zIndices, setZIndices] = useState(INITIAL_STATE.zIndices); 
+
+  // Слоты пресетов (62, 64, 65, 67, 69, 71 — пользовательские; 72 — захардкоженный)
+  const [presetSlots, setPresetSlots] = useState({
+    [LOCKED_PRESET_KEY]: cloneSnapshot(HARDCODED_PRESET_72)
+  });
+  const [presetStatus, setPresetStatus] = useState('init');
 
   // Визуальные значения прозрачности (0..1) для микшера и дебага
   const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
@@ -35,8 +93,47 @@ export default function App() {
   const videosCountRef = useRef(0);
   
   const stickRef = useRef({ x: 0, y: 0 });
-  const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
-  const savedOpacitiesRef = useRef([1, 1, 1, 1, 1]);
+  const positionsRef = useRef(INITIAL_STATE.positions.map(p => ({ ...p })));
+  const savedOpacitiesRef = useRef([...INITIAL_STATE.savedOpacities]);
+
+  // Актуальный снимок всех состояний (чтобы сохранение пресетов не зависело от замыканий useEffect)
+  const currentStateRef = useRef(null);
+  currentStateRef.current = {
+    rawOpacities,
+    volumes,
+    playbackRates,
+    zoomLevels,
+    pixelLevels,
+    thresholdLevels,
+    filterLevels,
+    delayLevels,
+    maskLevels,
+    masterMask,
+    positions,
+    zIndices,
+    savedOpacities: savedOpacitiesRef.current
+  };
+
+  const presetSlotsRef = useRef(presetSlots);
+  presetSlotsRef.current = presetSlots;
+
+  const applySnapshot = (snapshot) => {
+    const copy = cloneSnapshot(snapshot);
+    setRawOpacities(copy.rawOpacities);
+    setVolumes(copy.volumes);
+    setPlaybackRates(copy.playbackRates);
+    setZoomLevels(copy.zoomLevels);
+    setPixelLevels(copy.pixelLevels);
+    setThresholdLevels(copy.thresholdLevels);
+    setFilterLevels(copy.filterLevels);
+    setDelayLevels(copy.delayLevels);
+    setMaskLevels(copy.maskLevels);
+    setMasterMask(copy.masterMask);
+    positionsRef.current = copy.positions.map(p => ({ ...p }));
+    setPositions(copy.positions);
+    setZIndices(copy.zIndices);
+    savedOpacitiesRef.current = [...copy.savedOpacities];
+  };
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
@@ -112,7 +209,6 @@ export default function App() {
       const deltaVal = deltaStep * stepMultiplier;
 
       setRawOpacities(prev => {
-        // ПОКАНАЛЬНЫЙ РЕЖИМ: полный диапазон 0..100%
         if (currentChannel !== null) {
           return prev.map((v, idx) => {
             if (idx !== currentChannel) return v;
@@ -122,7 +218,6 @@ export default function App() {
           });
         }
 
-        // МАСТЕР-РЕЖИМ: сохраняем баланс, не трогаем null-каналы, упираемся в 97.5% сверху и в полный фейдаут снизу
         const activeValues = prev.filter(v => v !== null);
         if (activeValues.length === 0) return prev;
 
@@ -161,24 +256,53 @@ export default function App() {
       });
     };
 
-    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    // Скорость и фриз
-    if (knob === 71) applyRelativeEffect(0, 100, 1.2, setPixelLevels);       // Мозаика / Пикселизация
-    if (knob === 72) applyRelativeEffect(0, 10, 0.18, setFilterLevels);      // Кино-колористика (11 пресетов)
-    if (knob === 73) applySmartOpacity(OPACITY_STEP);                        // Умная непрозрачность с сохранением микса
-    if (knob === 74) applyRelativeEffect(0.35, 3.5, 0.035, setZoomLevels);   // Кадрированный зум
-    if (knob === 75) applyRelativeEffect(0, 100, 1.2, setThresholdLevels);   // Графический постеризатор (Threshold)
-    if (knob === 76) applyRelativeEffect(0, 100, 1.2, setDelayLevels);       // Хроматическое эхо (Delay)
-    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);              // Балансная громкость
+    if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);
+    if (knob === 71) applyRelativeEffect(0, 100, 1.2, setPixelLevels);
+    if (knob === 72) applyRelativeEffect(0, 10, 0.18, setFilterLevels);
+    if (knob === 73) applySmartOpacity(OPACITY_STEP);
+    if (knob === 74) applyRelativeEffect(0.35, 3.5, 0.035, setZoomLevels);
+    if (knob === 75) applyRelativeEffect(0, 100, 1.2, setThresholdLevels);
+    if (knob === 76) applyRelativeEffect(0, 100, 1.2, setDelayLevels);
+    if (knob === 77) applyMasterLockedVolume(0.02, setVolumes);
 
   }, [knobEvent]);
 
-  // ОБРАБОТКА ПЭДОВ, МАСОК И РАНДОМ-КЛАВИШ (66, 68, 70)
+  // ОБРАБОТКА ПЭДОВ, МАСОК, РАНДОМА, СБРОСА (63) И ПРЕСЕТОВ (61 + 62,64,65,67,69,71,72)
   useEffect(() => {
     if (!noteOnEvent) return;
-    const { note, velocity, type } = noteOnEvent;
+    const { note, velocity, type, isSaveHeld: saveMode } = noteOnEvent;
 
     if (type === 'noteOn' && velocity > 0) {
       const currentChannel = activeChannelRef.current;
+
+      // КЛАВИША 63: СБРОС ВСЕХ СОСТОЯНИЙ НА ИНИЦИАЛИЗИРОВАННОЕ
+      if (note === 63) {
+        applySnapshot(INITIAL_STATE);
+        setPresetStatus('RESET TO INITIAL');
+        return;
+      }
+
+      // СЛОТЫ ПРЕСЕТОВ: 62, 64, 65, 67, 69, 71, 72 (72 — только чтение, захардкожен)
+      if (PRESET_SLOT_KEYS.includes(note)) {
+        if (saveMode) {
+          if (note === LOCKED_PRESET_KEY) {
+            setPresetStatus(`SLOT ${note} LOCKED (HARDCODED)`);
+            return;
+          }
+          const snapshot = cloneSnapshot(currentStateRef.current);
+          setPresetSlots(prev => ({ ...prev, [note]: snapshot }));
+          setPresetStatus(`SAVED -> SLOT ${note}`);
+        } else {
+          const saved = presetSlotsRef.current[note];
+          if (saved) {
+            applySnapshot(saved);
+            setPresetStatus(`LOADED <- SLOT ${note}${note === LOCKED_PRESET_KEY ? ' (LOCKED)' : ''}`);
+          } else {
+            setPresetStatus(`SLOT ${note} EMPTY`);
+          }
+        }
+        return;
+      }
 
       // Нижний ряд пэдов (36-39): Вывод канала на верхний план
       if (note >= 36 && note <= 39) {
@@ -219,7 +343,7 @@ export default function App() {
         }
       }
 
-      // КЛАВИША 66: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ (Маски, сплиты, зум, позиция)
+      // КЛАВИША 66: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ
       if (note === 66) {
         if (currentChannel !== null) {
           setMaskLevels(prev => prev.map((m, idx) => {
@@ -262,24 +386,20 @@ export default function App() {
         }
       }
 
-      // КЛАВИША 68: РАНДОМ ЦВЕТА И ТЕКСТУР (Кино-фильтры, порог, пикселизация, эхо)
+      // КЛАВИША 68: РАНДОМ ЦВЕТА И ТЕКСТУР
       if (note === 68) {
         const generateFxRecipe = () => {
           const recipe = randInt(0, 3);
           const filter = randInt(0, 10);
           if (recipe === 0) {
-            // Чистая кино-колористика + легкий шлейф
             return { filter, pixel: 0, thresh: 0, delay: Math.random() < 0.45 ? randInt(20, 48) : 0 };
           }
           if (recipe === 1) {
-            // Графический постеризатор в читаемом диапазоне
             return { filter, pixel: 0, thresh: randInt(22, 58), delay: Math.random() < 0.5 ? randInt(25, 55) : 0 };
           }
           if (recipe === 2) {
-            // Ретро-мозаика без перегруза
             return { filter, pixel: randInt(10, 38), thresh: 0, delay: Math.random() < 0.35 ? randInt(15, 40) : 0 };
           }
-          // Хроматический Delay-шлейф
           return { filter, pixel: 0, thresh: 0, delay: randInt(45, 88) };
         };
 
@@ -293,7 +413,7 @@ export default function App() {
         setDelayLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].delay : v)));
       }
 
-      // КЛАВИША 70: РАНДОМ МИКСА, СЛОЕВ И РИТМА (Прозрачность, z-order, скорость)
+      // КЛАВИША 70: РАНДОМ МИКСА, СЛОЕВ И РИТМА
       if (note === 70) {
         const speedPalette = [0.35, 0.65, 1.0, 1.0, 1.35, 1.75];
 
@@ -301,13 +421,12 @@ export default function App() {
           setPlaybackRates(prev => prev.map((r, idx) => (idx === currentChannel ? pickRandom(speedPalette) : r)));
           setRawOpacities(prev => prev.map((op, idx) => {
             if (idx !== currentChannel) return op;
-            const steps = randInt(18, 40); // 45% .. 100%
+            const steps = randInt(18, 40);
             return round4(steps * OPACITY_STEP);
           }));
         } else {
           const availableCount = videosCountRef.current > 0 ? Math.min(4, videosCountRef.current) : 4;
           const indices = Array.from({ length: availableCount }, (_, i) => i);
-          // Перемешиваем каналы
           for (let i = indices.length - 1; i > 0; i--) {
             const j = randInt(0, i);
             [indices[i], indices[j]] = [indices[j], indices[i]];
@@ -318,10 +437,10 @@ export default function App() {
           const solidCut = activeCount === 1 || Math.random() < 0.25;
 
           setRawOpacities(prev => prev.map((op, idx) => {
-            if (idx === 4) return op; // Титры не трогаем
+            if (idx === 4) return op;
             if (!activeSet.has(idx)) return null;
             if (solidCut && idx === indices[0]) return 1;
-            const steps = randInt(18, 38); // 45% .. 95% (чтобы работали режимы наложения)
+            const steps = randInt(18, 38);
             return round4(steps * OPACITY_STEP);
           }));
 
@@ -377,6 +496,10 @@ export default function App() {
           
           <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
             target mode: {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
+            {isSaveHeld ? ' | [SAVE 61 HELD]' : ''}
+          </p>
+          <p style={{ color: '#ffeb3b' }}>
+            presets: {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
           </p>
           <hr style={{ borderColor: '#444' }}/>
           <p style={{ color: '#4caf50' }}>
