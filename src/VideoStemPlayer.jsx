@@ -35,7 +35,7 @@ const INITIAL_STATE = {
 const HARDCODED_PRESET_72 = {
   rawOpacities: [0.93, 0.73, null, 0.55, 0.55],
   volumes: [0, 0, 0, 0, 0.1],
-  playbackRates: [1.35, 1.35, 0.35, 1.0, 2.0],
+  playbackRates: [1.35, 1.35, 0.35, 1.0, 1.0],
   zoomLevels: [1.65, 1.57, 1.64, 1.0, 1.02],
   pixelLevels: [0, 0, 38, 0, 0],
   thresholdLevels: [0, 0, 0, 0, 0],
@@ -524,7 +524,11 @@ export default function VideoStemPlayer() {
 
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files).slice(0, 4);
+    if (files.length === 0) return;
+
     setVideos(files.map(file => URL.createObjectURL(file)));
+    applySnapshot(HARDCODED_PRESET_72);
+    setPresetStatus('LOADED <- SLOT 72 (AUTO)');
   };
 
   const STAGE_WIDTH = 'min(92vw, calc(88vh * 4 / 3))';
@@ -568,28 +572,26 @@ export default function VideoStemPlayer() {
         </div>
       </section>
 
-      {/* НИЖНЯЯ СЕКЦИЯ ЗА ПРЕДЕЛАМИ ЭКРАНА: БЕЛЫЙ ФОН */}
-      <section style={{
-        width: '100%',
-        backgroundColor: '#ffffff',
-        color: '#000000',
-        padding: '24px 24px 64px',
-        boxSizing: 'border-box'
-      }}>
-        {/* 1. ЗАГРУЗКА ВИДЕО — ВЫРОВНЕНА ПО ПРАВОМУ КРАЮ ВИДЕО */}
-        <div style={{
-          width: STAGE_WIDTH,
-          maxWidth: '100%',
-          margin: '0 auto 48px',
-          display: 'flex',
-          justifyContent: 'flex-end'
-        }}>
+      {/* 1. ПАНЕЛЬ ЗАГРУЗКИ ВИДЕО — ВИЗУАЛЬНО КАК ФУТЕР САЙТА */}
+      <div
+        className="site-footer"
+        style={{
+          position: 'relative',
+          width: '100%',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div className="footer-col-left"></div>
+
+        <div className="footer-col-center" style={{ textAlign: 'center' }}>
           <span style={{ color: '#000', userSelect: 'none' }}>
             [<label
               className="ps-upload-btn"
               style={{ cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
             >
-              upload media
+              upload
               <input
                 type="file"
                 accept="video/*"
@@ -601,7 +603,17 @@ export default function VideoStemPlayer() {
           </span>
         </div>
 
-        {/* 2. DEBUG PANEL — В САМОМ НИЗУ (СКРЫТЬ, КОГДА ВСЁ БУДЕТ ГОТОВО) */}
+        <div className="footer-col-right"></div>
+      </div>
+
+      {/* 2. DEBUG PANEL — В САМОМ НИЗУ (СКРЫТЬ, КОГДА ВСЁ БУДЕТ ГОТОВО) */}
+      <section style={{
+        width: '100%',
+        backgroundColor: '#ffffff',
+        color: '#000000',
+        padding: '24px 24px 64px',
+        boxSizing: 'border-box'
+      }}>
         <div style={{
           width: STAGE_WIDTH,
           maxWidth: '100%',

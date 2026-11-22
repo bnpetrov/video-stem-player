@@ -341,14 +341,16 @@ export default function VideoMixer({
       const dt = Math.min(now - lastTime, 100);
       lastTime = now;
 
-      const rate = playbackRatesRef.current[4] !== undefined ? playbackRatesRef.current[4] : 1;
+      const rawRate = playbackRatesRef.current[4] !== undefined ? playbackRatesRef.current[4] : 1;
+      // Замедление 0..1 линейное, ускорение 1..2 разгоняется до 5x
+      const effectiveRate = rawRate > 1 ? 1 + (rawRate - 1) * 4 : rawRate;
       const delay = delayLevelsRef.current[4] || 0;
       const baseSpeed = 90;
 
       const singleListHeight = creditsMainRef.current ? creditsMainRef.current.scrollHeight / 2 : 1800;
 
-      if (rate > 0.05 && singleListHeight > 0) {
-        creditsPosRef.current = (creditsPosRef.current + (baseSpeed * rate * dt) / 1000) % singleListHeight;
+      if (rawRate > 0.05 && singleListHeight > 0) {
+        creditsPosRef.current = (creditsPosRef.current + (baseSpeed * effectiveRate * dt) / 1000) % singleListHeight;
       }
 
       const mainY = -singleListHeight + creditsPosRef.current;
