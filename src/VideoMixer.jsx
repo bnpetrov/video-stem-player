@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 // 8 режимов наложения с чередованием: светлый/графический <-> тёмный/контрастный
 export const BLEND_MODES = [
@@ -74,22 +74,21 @@ const clipMasks = [
 ];
 
 // ИНВЕРТИРОВАННЫЕ ВЕРСИИ КАНАЛЬНЫХ МАСОК (Клавиша 70 + канал)
-// Для круга (M-1) используется radial-gradient maskImage, чтобы сохранить ровную окружность 24vh
 const invertedClipMasks = [
-  'none',                                                                                                                                                                    // 0: Выкл
-  'none',                                                                                                                                                                    // 1: Обрабатывается через radial-gradient
-  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 33% 12%, 67% 12%, 67% 88%, 33% 88%, 33% 12%)',                                                                // 2: Вырезанный квадрат
-  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 8%, 76% 50%, 50% 92%, 24% 50%, 50% 8%)',                                                                  // 3: Вырезанный ромб
-  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 8% 28%, 92% 28%, 92% 72%, 8% 72%, 8% 28%)',                                                                   // 4: Вырезанное каше
-  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 36% 8%, 64% 8%, 64% 92%, 36% 92%, 36% 8%)',                                                                   // 5: Вырезанный монолит
-  'inset(33% 0% 33% 0%)',                                                                                                                                                    // 6: Центральная полоса вместо краёв
-  'inset(18% 18% 18% 18%)',                                                                                                                                                  // 7: Внутреннее окно вместо рамки
-  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 42% 10%, 58% 10%, 58% 36%, 73% 36%, 73% 64%, 58% 64%, 58% 90%, 42% 90%, 42% 64%, 27% 64%, 27% 36%, 42% 36%, 42% 10%)' // 8: Вырезанный крест
+  'none',
+  'none', // 1: Обрабатывается через radial-gradient
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 33% 12%, 67% 12%, 67% 88%, 33% 88%, 33% 12%)',
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 8%, 76% 50%, 50% 92%, 24% 50%, 50% 8%)',
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 8% 28%, 92% 28%, 92% 72%, 8% 72%, 8% 28%)',
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 36% 8%, 64% 8%, 64% 92%, 36% 92%, 36% 8%)',
+  'inset(33% 0% 33% 0%)',
+  'inset(18% 18% 18% 18%)',
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 42% 10%, 58% 10%, 58% 36%, 73% 36%, 73% 64%, 58% 64%, 58% 90%, 42% 90%, 42% 64%, 27% 64%, 27% 36%, 42% 36%, 42% 10%)'
 ];
 
 const INVERTED_CIRCLE_MASK_IMAGE = 'radial-gradient(circle at 50% 50%, transparent 24vh, black calc(24vh + 0.5px))';
 
-// SPLIT-3: 8 ИДЕАЛЬНО РОВНЫХ ВЕРТИКАЛЬНЫХ ПОЛОС (Без косых срезов)
+// SPLIT-3: 8 ИДЕАЛЬНО РОВНЫХ ВЕРТИКАЛЬНЫХ ПОЛОС
 const slicer8Combo = [
   'polygon(0% 0%, 0% 100%, 12.5% 100%, 12.5% 0%, 37.5% 0%, 37.5% 100%, 62.5% 100%, 62.5% 0%, 75% 0%, 75% 100%, 87.5% 100%, 87.5% 0%)',
   'polygon(0% 0%, 0% 100%, 25% 100%, 25% 0%, 62.5% 0%, 62.5% 100%, 87.5% 100%, 87.5% 0%)',
@@ -99,11 +98,21 @@ const slicer8Combo = [
 
 // SPLIT-4: ЧИСТЫЕ ПЕРЕКРЫВАЮЩИЕСЯ КОЛОННЫ
 const wideOverlapColumns = [
-  'inset(0% 62% 0% 0%)',   // Канал A: 0% - 38%
-  'inset(0% 38% 0% 22%)',  // Канал B: 22% - 62%
-  'inset(0% 22% 0% 38%)',  // Канал C: 38% - 78%
-  'inset(0% 0% 0% 62%)'    // Канал D: 62% - 100%
+  'inset(0% 62% 0% 0%)',
+  'inset(0% 38% 0% 22%)',
+  'inset(0% 22% 0% 38%)',
+  'inset(0% 0% 0% 62%)'
 ];
+
+// Диапазон длины лупа (сек) от силы нажатия пэда 39:
+// 1 (лёгкий удар) -> 0.12с (жёсткий глитч), 127 (максимум) -> 0.65с (динамичный, но плавный кусок)
+const MIN_LOOP_SEC = 0.3;
+const MAX_LOOP_SEC = 1;
+const MIN_TAP_HOLD_MS = 160;
+const velocityToLoopSec = (vel) => {
+  const norm = Math.max(0, Math.min(1, (vel - 1) / 126));
+  return MIN_LOOP_SEC + norm * (MAX_LOOP_SEC - MIN_LOOP_SEC);
+};
 
 export default function VideoMixer({
   videos,
@@ -121,7 +130,7 @@ export default function VideoMixer({
   masterMask,
   positions,
   zIndices,
-  flashSignal = { count: 0, intensity: 0 }
+  beatRepeat = { active: false, velocity: 0, targetChannel: null }
 }) {
   const videoRefs = useRef([]);
   const ghost1Refs = useRef([]);
@@ -134,48 +143,131 @@ export default function VideoMixer({
   
   const delayLevelsRef = useRef(delayLevels);
   const playbackRatesRef = useRef(playbackRates);
+  const opacitiesRef = useRef(opacities);
 
-  // Анимация короткой плёночной вспышки + зум-ин (Пэд 39)
-  const [flashLevel, setFlashLevel] = useState(0);
-  const flashValRef = useRef(0);
-  const flashRafRef = useRef(null);
+  // Рефы для Jump-Cut + Beat Repeat (Пэд 39)
+  const repeatTargetsRef = useRef([]);
+  const repeatDurationRef = useRef(0.25);
+  const repeatRafRef = useRef(null);
+  const repeatStartTimeRef = useRef(0);
+  const releaseTimeoutRef = useRef(null);
+  const beatRepeatTargetChannelRef = useRef(null);
 
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
     playbackRatesRef.current = playbackRates;
-  }, [delayLevels, playbackRates]);
+    opacitiesRef.current = opacities;
+  }, [delayLevels, playbackRates, opacities]);
 
-  // ЗАПУСК И ПЛАВНОЕ ЗАТУХАНИЕ ВСПЫШКИ (160–200 мс, независимо от частоты монитора)
   useEffect(() => {
-    if (!flashSignal || flashSignal.count === 0) return;
+    beatRepeatTargetChannelRef.current = beatRepeat.targetChannel;
+    if (beatRepeat.velocity > 0) {
+      repeatDurationRef.current = velocityToLoopSec(beatRepeat.velocity);
+    }
+  }, [beatRepeat.velocity, beatRepeat.targetChannel]);
 
-    flashValRef.current = flashSignal.intensity || 1;
-    setFlashLevel(flashValRef.current);
+  // JUMP-CUT + BEAT REPEAT (ПЭД 39): прыжок, луп на удержании, возврат с минимальной выдержкой кадра
+  useEffect(() => {
+    const revertVideos = () => {
+      if (repeatTargetsRef.current.length > 0) {
+        repeatTargetsRef.current.forEach(({ index, originalTime }) => {
+          const videoEl = videoRefs.current[index];
+          if (videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+            videoEl.currentTime = Math.max(0, Math.min(videoEl.duration - 0.02, originalTime));
+          }
+        });
+        repeatTargetsRef.current = [];
+      }
+    };
 
-    if (flashRafRef.current) cancelAnimationFrame(flashRafRef.current);
-
-    let lastTime = performance.now();
-    const decay = (now) => {
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
-      lastTime = now;
-      flashValRef.current *= Math.exp(-dt * 15);
-
-      if (flashValRef.current < 0.015) {
-        flashValRef.current = 0;
-        setFlashLevel(0);
-        flashRafRef.current = null;
-        return;
+    if (beatRepeat.active) {
+      if (releaseTimeoutRef.current) {
+        clearTimeout(releaseTimeoutRef.current);
+        releaseTimeoutRef.current = null;
       }
 
-      setFlashLevel(flashValRef.current);
-      flashRafRef.current = requestAnimationFrame(decay);
-    };
+      repeatStartTimeRef.current = performance.now();
 
-    flashRafRef.current = requestAnimationFrame(decay);
+      // Если пользователь набивает быструю серию тапов — сохраняем самую первую исходную точку
+      const prevOriginals = new Map(
+        repeatTargetsRef.current.map(({ index, originalTime }) => [index, originalTime])
+      );
+
+      const targetCh = beatRepeatTargetChannelRef.current;
+      const targetIndices = (targetCh !== null && targetCh >= 0 && targetCh < 4)
+        ? [targetCh]
+        : [0, 1, 2, 3].filter(i => videoRefs.current[i] && (opacitiesRef.current[i] || 0) > 0.01);
+
+      const snapshots = [];
+
+      targetIndices.forEach((index) => {
+        const videoEl = videoRefs.current[index];
+        if (!videoEl || !Number.isFinite(videoEl.duration) || videoEl.duration <= 0.3) return;
+
+        const dur = videoEl.duration;
+        const originalTime = prevOriginals.has(index) ? prevOriginals.get(index) : videoEl.currentTime;
+        const maxStart = Math.max(0, dur - MAX_LOOP_SEC - 0.05);
+
+        let loopStart = Math.random() * maxStart;
+        if (maxStart > 1.5 && Math.abs(loopStart - originalTime) < 0.8) {
+          loopStart = (originalTime + maxStart * (0.25 + Math.random() * 0.5)) % maxStart;
+        }
+
+        snapshots.push({ index, originalTime, loopStart });
+        videoEl.currentTime = loopStart;
+      });
+
+      repeatTargetsRef.current = snapshots;
+
+      const tickLoop = () => {
+        const loopLen = repeatDurationRef.current;
+
+        repeatTargetsRef.current.forEach(({ index, loopStart }) => {
+          const videoEl = videoRefs.current[index];
+          if (!videoEl || videoEl.paused || videoEl.seeking) return;
+
+          const loopEnd = Math.min(videoEl.duration || loopStart + loopLen, loopStart + loopLen);
+          if (videoEl.currentTime >= loopEnd || videoEl.currentTime < loopStart - 0.05) {
+            videoEl.currentTime = loopStart;
+          }
+        });
+
+        repeatRafRef.current = requestAnimationFrame(tickLoop);
+      };
+
+      repeatRafRef.current = requestAnimationFrame(tickLoop);
+    } else {
+      if (repeatRafRef.current) {
+        cancelAnimationFrame(repeatRafRef.current);
+        repeatRafRef.current = null;
+      }
+
+      if (repeatTargetsRef.current.length > 0) {
+        const elapsed = performance.now() - repeatStartTimeRef.current;
+        const remaining = Math.max(0, MIN_TAP_HOLD_MS - elapsed);
+
+        if (remaining > 0) {
+          releaseTimeoutRef.current = setTimeout(() => {
+            releaseTimeoutRef.current = null;
+            revertVideos();
+          }, remaining);
+        } else {
+          revertVideos();
+        }
+      }
+    }
+
     return () => {
-      if (flashRafRef.current) cancelAnimationFrame(flashRafRef.current);
+      if (repeatRafRef.current) {
+        cancelAnimationFrame(repeatRafRef.current);
+        repeatRafRef.current = null;
+      }
+      if (releaseTimeoutRef.current) {
+        clearTimeout(releaseTimeoutRef.current);
+        releaseTimeoutRef.current = null;
+      }
     };
-  }, [flashSignal]);
+  }, [beatRepeat.active]);
 
   // ГЛАВНЫЙ ИНТЕРВАЛ ВРЕМЕНИ ДЛЯ DELAY ВИДЕО (ЭХО)
   useEffect(() => {
@@ -305,8 +397,6 @@ export default function VideoMixer({
       return zCurr < zLow ? currIdx : lowestIdx;
     }, visibleVideoIndices[0]);
   }
-
-  const hasAnyActiveLayer = visibleVideoIndices.length > 0 || (opacities[4] || 0) > 0.01;
 
   const getPairBlend = (idxA, idxB, currentIdx, upperBlend = 'screen') => {
     const visA = videos[idxA] && (opacities[idxA] || 0) > 0.01;
@@ -523,14 +613,10 @@ export default function VideoMixer({
           if (!videoSrc) return null;
 
           const opacity = opacities[index] !== undefined ? opacities[index] : 0;
-          const isActive = opacity > 0.01;
-          const activeFlash = isActive ? flashLevel : 0;
-
           const { masterClip, channelClip, channelMaskImage, blend: rawBlendMode } = getMaskAndBlend(index);
           const currentBlendMode = opacity >= 0.999 ? 'normal' : rawBlendMode;
 
-          const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
-          const currentZoom = baseZoom * (1 + activeFlash * 0.12);
+          const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
           const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
           const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
 
@@ -546,9 +632,6 @@ export default function VideoMixer({
           if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
           if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
           if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
-          if (activeFlash > 0.01) {
-            activeFilters.push(`brightness(${(1 + activeFlash * 1.15).toFixed(2)}) contrast(${(1 + activeFlash * 0.35).toFixed(2)})`);
-          }
           const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
           const effectiveZIndex = masterMask === 6
@@ -583,7 +666,7 @@ export default function VideoMixer({
             WebkitMaskImage: channelMaskImage,
             filter: filterStyle,
             imageRendering: isPixelated ? 'pixelated' : 'auto',
-            transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
+            transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
             pointerEvents: 'none'
           };
 
@@ -629,28 +712,13 @@ export default function VideoMixer({
         })}
       </div>
 
-      {/* КОРОТКАЯ ТЁПЛАЯ ПЛЁНОЧНАЯ ЗАСВЕТКА ПРИ СКЛЕЙКЕ (ПЭД 39) */}
-      {hasAnyActiveLayer && flashLevel > 0.01 && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 5,
-          backgroundColor: `rgba(255, 248, 232, ${(flashLevel * 0.32).toFixed(3)})`,
-          mixBlendMode: 'screen',
-          pointerEvents: 'none'
-        }} />
-      )}
-
       {/* ОТДЕЛЬНЫЙ ВЕРХНИЙ СЛОЙ: CREDITS (КАНАЛ 5, КЛАВИША 58) — ВСЕГДА ПОВЕРХ ВСЕГО */}
       {(() => {
         const index = 4;
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
-        const isActive = opacity > 0.01;
-        const activeFlash = isActive ? flashLevel : 0;
         const { channelClip, channelMaskImage, blend: creditsBlendMode } = getMaskAndBlend(index);
 
-        const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
-        const currentZoom = baseZoom * (1 + activeFlash * 0.1);
+        const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
 
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
@@ -665,9 +733,6 @@ export default function VideoMixer({
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
         if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
-        if (activeFlash > 0.01) {
-          activeFilters.push(`brightness(${(1 + activeFlash * 0.7).toFixed(2)})`);
-        }
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
         const creditsTransformStyle = {
@@ -684,7 +749,7 @@ export default function VideoMixer({
           WebkitMaskImage: channelMaskImage,
           filter: filterStyle,
           imageRendering: isPixelated ? 'pixelated' : 'auto',
-          transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
+          transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
           pointerEvents: 'none'
         };
 

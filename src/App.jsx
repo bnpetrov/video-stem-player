@@ -69,7 +69,7 @@ const cloneSnapshot = (s) => ({
 });
 
 export default function App() {
-  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldActionKey, isSaveHeld } = useMidi();
+  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldActionKey, isSaveHeld, heldPads } = useMidi();
   const [videos, setVideos] = useState([]);
   
   // 5 каналов: 0..3 — видео (49, 51, 54, 56), 4 — титры кинофестиваля (58)
@@ -88,14 +88,22 @@ export default function App() {
   const [positions, setPositions] = useState(INITIAL_STATE.positions.map(p => ({ ...p }))); 
   const [zIndices, setZIndices] = useState(INITIAL_STATE.zIndices); 
 
-  // Импульс плёночной вспышки + зум-ин (Пэд 39)
-  const [flashSignal, setFlashSignal] = useState({ count: 0, intensity: 0 });
-
   // Слоты пресетов (62, 64, 65, 67, 69, 71 — пользовательские; 72 — захардкоженный)
   const [presetSlots, setPresetSlots] = useState({
     [LOCKED_PRESET_KEY]: cloneSnapshot(HARDCODED_PRESET_72)
   });
   const [presetStatus, setPresetStatus] = useState('init');
+
+  // Пэд 39: Jump-Cut + Beat Repeat (сила нажатия / aftertouch задаёт длину лупа 0.12–0.65 сек)
+  const pad39Velocity = heldPads[39] || 0;
+  const beatRepeat = {
+    active: pad39Velocity > 0,
+    velocity: pad39Velocity,
+    targetChannel: heldChannel
+  };
+  const beatRepeatMs = pad39Velocity > 0
+    ? Math.round((0.12 + ((pad39Velocity - 1) / 126) * 0.53) * 1000)
+    : 0;
 
   // Визуальные значения прозрачности (0..1) для микшера и дебага
   const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
@@ -319,7 +327,6 @@ export default function App() {
         setBlendModes(prev => prev.map((modeIdx, idx) => {
           if (idx !== channelIndex) return modeIdx;
           if (idx === 4) {
-            // Для титров: normal (-1) -> 0..7 -> normal (-1)
             return modeIdx >= BLEND_MODES.length - 1 ? -1 : modeIdx + 1;
           }
           return (modeIdx + 1) % BLEND_MODES.length;
@@ -365,7 +372,7 @@ export default function App() {
         return;
       }
 
-      // НИЖНИЙ РЯД ПЭДОВ (36-38): РАНДОМ ПО КАТЕГОРИЯМ
+      // НИЖНИЙ РЯД ПЭДОВ (36-38): РАНДОМ ПО КАТЕГОРИЯМ (39 — Jump-Cut + Beat Repeat в VideoMixer)
       // ПЭД 36: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ
       if (note === 36) {
         if (currentChannel !== null) {
@@ -484,13 +491,6 @@ export default function App() {
         return;
       }
 
-      // ПЭД 39: КОРОТКАЯ ПЛЁНОЧНАЯ ВСПЫШКА + ЗУМ-ИН АКТИВНЫХ КАНАЛОВ
-      if (note === 39) {
-        const intensity = Math.max(0.65, Math.min(1, velocity / 127));
-        setFlashSignal(prev => ({ count: prev.count + 1, intensity }));
-        return;
-      }
-      
       // Верхний ряд пэдов (40-43): Toggle Mute с запоминанием последней непрозрачности
       if (note >= 40 && note <= 43) {
         const trackIndex = note - 40;
@@ -545,7 +545,7 @@ export default function App() {
         masterMask={masterMask}
         positions={positions}
         zIndices={zIndices}
-        flashSignal={flashSignal}
+        beatRepeat={beatRepeat}
       />
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
@@ -561,6 +561,7 @@ export default function App() {
             target mode: {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
             {isSaveHeld ? ' | [SAVE 61 HELD]' : ''}
             {heldActionKey !== null ? ` | [MOD ${heldActionKey} HELD]` : ''}
+            {beatRepeat.active ? ` | [LOOP 39: ${beatRepeatMs}ms]` : ''}
           </p>
           <p style={{ color: '#ffeb3b' }}>
             presets: {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
