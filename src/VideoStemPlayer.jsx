@@ -578,10 +578,21 @@ export default function VideoStemPlayer() {
           display: 'flex',
           justifyContent: 'flex-end'
         }}>
-          <label style={{ cursor: 'pointer', color: '#000000', fontSize: '0.9rem', letterSpacing: '0.04em', userSelect: 'none', padding: 0 }}>
-            [ <span style={{ textDecoration: 'underline', textUnderlineOffset: '4px' }}>upload media</span> ]
-            <input type="file" accept="video/*" multiple onChange={handleFileUpload} style={{ display: 'none' }} />
-          </label>
+          <span style={{ color: '#000', userSelect: 'none' }}>
+            [<label
+              className="ps-upload-btn"
+              style={{ cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+            >
+              upload media
+              <input
+                type="file"
+                accept="video/*"
+                multiple
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+            </label>]
+          </span>
         </div>
 
         {/* 2. DEBUG PANEL — В САМОМ НИЗУ (СКРЫТЬ, КОГДА ВСЁ БУДЕТ ГОТОВО) */}
