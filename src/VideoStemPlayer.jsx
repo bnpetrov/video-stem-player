@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useMidi } from './useMidi';
 import VideoMixer, { BLEND_MODES } from './VideoMixer';
 
+const SHOW_DEBUG = false; // true — показать панель дебага, false — скрыть
+
 const OPACITY_STEP = 0.025;
 const MAX_MASTER_OPACITY = 1.0 - OPACITY_STEP; // 0.975 (на шаг ниже 100%)
 const round4 = (n) => Math.round(n * 10000) / 10000;
@@ -606,111 +608,113 @@ export default function VideoStemPlayer() {
         <div className="footer-col-right"></div>
       </div>
 
-      {/* 2. DEBUG PANEL — В САМОМ НИЗУ (СКРЫТЬ, КОГДА ВСЁ БУДЕТ ГОТОВО) */}
-      <section style={{
-        width: '100%',
-        backgroundColor: '#ffffff',
-        color: '#000000',
-        padding: '24px 24px 64px',
-        boxSizing: 'border-box'
-      }}>
-        <div style={{
-          width: STAGE_WIDTH,
-          maxWidth: '100%',
-          margin: '0 auto',
-          padding: '20px 24px',
+      {/* 2. DEBUG PANEL — В САМОМ НИЗУ (УПРАВЛЯЕТСЯ ФЛАГОМ SHOW_DEBUG) */}
+      {SHOW_DEBUG && (
+        <section style={{
+          width: '100%',
           backgroundColor: '#ffffff',
           color: '#000000',
-          border: '1px solid #000000',
-          fontFamily: 'monospace',
-          fontSize: '0.8rem',
-          lineHeight: '1.65',
-          textAlign: 'left',
+          padding: '24px 24px 64px',
           boxSizing: 'border-box'
         }}>
           <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            flexWrap: 'wrap',
-            gap: '8px',
-            borderBottom: '1px solid #000000',
-            paddingBottom: '10px',
-            marginBottom: '12px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em'
+            width: STAGE_WIDTH,
+            maxWidth: '100%',
+            margin: '0 auto',
+            padding: '20px 24px',
+            backgroundColor: '#ffffff',
+            color: '#000000',
+            border: '1px solid #000000',
+            fontFamily: 'monospace',
+            fontSize: '0.8rem',
+            lineHeight: '1.65',
+            textAlign: 'left',
+            boxSizing: 'border-box'
           }}>
-            <span style={{ fontWeight: 'bold' }}>inf (debug)</span>
-            <span style={{ fontWeight: 'bold' }}>
-              {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
-              {isSaveHeld ? ' / SAVE 61' : ''}
-              {heldActionKey !== null ? ` / MOD ${heldActionKey}` : ''}
-              {beatRepeat.active ? ` / LOOP 39: ${beatRepeatMs}ms` : ''}
-            </span>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              flexWrap: 'wrap',
+              gap: '8px',
+              borderBottom: '1px solid #000000',
+              paddingBottom: '10px',
+              marginBottom: '12px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em'
+            }}>
+              <span style={{ fontWeight: 'bold' }}>inf (debug)</span>
+              <span style={{ fontWeight: 'bold' }}>
+                {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
+                {isSaveHeld ? ' / SAVE 61' : ''}
+                {heldActionKey !== null ? ` / MOD ${heldActionKey}` : ''}
+                {beatRepeat.active ? ` / LOOP 39: ${beatRepeatMs}ms` : ''}
+              </span>
+            </div>
+
+            <p style={{ margin: '0 0 10px 0' }}>
+              <strong>presets:</strong> {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
+            </p>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
+            <p style={{ margin: '2px 0' }}>
+              opacity (73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              volume (77): {volumes.map((v, i) => `T${i + 1}: ${Math.round(v * 100)}%`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              speed (70): {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              zoom (74): {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              pos (xy): {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              blend (68): {blendModes.map((b, i) => {
+                if (i < 4 && i === bottomVisibleChannel) return `T${i + 1}: BASE`;
+                const name = b < 0 ? 'normal' : (BLEND_MODES[b] || 'screen');
+                return `T${i + 1}: ${name}`;
+              }).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              ch mask (70 inv): {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : `M-${m}${invertedMasks[i] ? '(inv)' : ''}`}`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0', fontWeight: 'bold' }}>
+              master preset: {masterMask === 0 ? 'OFF (Free Mix)' : `SPLIT-${masterMask}`}
+            </p>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
+            <p style={{ margin: '2px 0' }}>
+              pixel (71): {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              thresh (75): {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              filter (72): {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
+            </p>
+            <p style={{ margin: '2px 0' }}>
+              delay (76): {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
+            </p>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
+            {midiLog ? (
+              <p style={{ margin: 0 }}>MIDI IN: Cmd {midiLog.command} | Note {midiLog.note} | Vel {midiLog.velocity}</p>
+            ) : (
+              <p style={{ margin: 0, color: '#777777' }}>waiting MIDI...</p>
+            )}
           </div>
-
-          <p style={{ margin: '0 0 10px 0' }}>
-            <strong>presets:</strong> {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
-          </p>
-
-          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
-
-          <p style={{ margin: '2px 0' }}>
-            opacity (73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            volume (77): {volumes.map((v, i) => `T${i + 1}: ${Math.round(v * 100)}%`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            speed (70): {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            zoom (74): {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            pos (xy): {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            blend (68): {blendModes.map((b, i) => {
-              if (i < 4 && i === bottomVisibleChannel) return `T${i + 1}: BASE`;
-              const name = b < 0 ? 'normal' : (BLEND_MODES[b] || 'screen');
-              return `T${i + 1}: ${name}`;
-            }).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            ch mask (70 inv): {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : `M-${m}${invertedMasks[i] ? '(inv)' : ''}`}`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0', fontWeight: 'bold' }}>
-            master preset: {masterMask === 0 ? 'OFF (Free Mix)' : `SPLIT-${masterMask}`}
-          </p>
-
-          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
-
-          <p style={{ margin: '2px 0' }}>
-            pixel (71): {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            thresh (75): {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            filter (72): {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
-          </p>
-          <p style={{ margin: '2px 0' }}>
-            delay (76): {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
-          </p>
-
-          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
-
-          {midiLog ? (
-            <p style={{ margin: 0 }}>MIDI IN: Cmd {midiLog.command} | Note {midiLog.note} | Vel {midiLog.velocity}</p>
-          ) : (
-            <p style={{ margin: 0, color: '#777777' }}>waiting MIDI...</p>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
