@@ -383,7 +383,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           {[0, 1, 2, 3, 4].map((index) => {
             // 1. БЕЗ МОРГАНИЯ: Стабильные координаты feFlood (x=4 y=4) + плавный радиус без пересчета сетки тайлов
             const rawPixel = pixelLevels && pixelLevels[index] ? pixelLevels[index] : 0;
-            const pixelSize = rawPixel > 0 ? Math.max(0.01, Math.pow(rawPixel / 100, 1.35) * 65) : 0.01;
+            const pixelSize = rawPixel > 0 ? 2 + Math.pow(rawPixel / 100, 1.35) * 62 : 2;
 
             // 3. ПОЛНЫЙ ДИАПАЗОН THRESHOLD: Сохраняем мягкий шаг, но позволяем увести от чистого белого до полного черного (0.0 .. 1.05)
             const thresh = thresholdLevels && thresholdLevels[index] ? thresholdLevels[index] : 0;
@@ -394,11 +394,11 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
             return (
               <React.Fragment key={index}>
                 <filter id={`pixelate-${index}`}>
-                  <feFlood x="4" y="4" height="2" width="2"/>
-                  <feComposite width={pixelSize} height={pixelSize}/>
-                  <feTile result="a"/>
-                  <feComposite in="SourceGraphic" in2="a" operator="in"/>
-                  <feMorphology operator="dilate" radius={Math.max(0, pixelSize / 2)}/>
+                  <feFlood x="0" y="0" height="1" width="1" />
+                  <feComposite x="0" y="0" width={pixelSize} height={pixelSize} />
+                  <feTile result="a" />
+                  <feComposite in="SourceGraphic" in2="a" operator="in" />
+                  <feMorphology operator="dilate" radius={pixelSize / 2} />
                 </filter>
 
                 <filter id={`threshold-${index}`} colorInterpolationFilters="sRGB">
