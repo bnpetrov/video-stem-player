@@ -63,7 +63,7 @@ const cloneSnapshot = (s) => ({
 });
 
 export default function App() {
-  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, isSaveHeld } = useMidi();
+  const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldActionKey, isSaveHeld } = useMidi();
   const [videos, setVideos] = useState([]);
   
   // 5 каналов: 0..3 — видео (49, 51, 54, 56), 4 — титры кинофестиваля (58)
@@ -79,6 +79,9 @@ export default function App() {
   const [masterMask, setMasterMask] = useState(INITIAL_STATE.masterMask);
   const [positions, setPositions] = useState(INITIAL_STATE.positions.map(p => ({ ...p }))); 
   const [zIndices, setZIndices] = useState(INITIAL_STATE.zIndices); 
+
+  // Импульс плёночной вспышки + зум-ин (Пэд 39)
+  const [flashSignal, setFlashSignal] = useState({ count: 0, intensity: 0 });
 
   // Слоты пресетов (62, 64, 65, 67, 69, 71 — пользовательские; 72 — захардкоженный)
   const [presetSlots, setPresetSlots] = useState({
@@ -96,7 +99,6 @@ export default function App() {
   const positionsRef = useRef(INITIAL_STATE.positions.map(p => ({ ...p })));
   const savedOpacitiesRef = useRef([...INITIAL_STATE.savedOpacities]);
 
-  // Актуальный снимок всех состояний (чтобы сохранение пресетов не зависело от замыканий useEffect)
   const currentStateRef = useRef(null);
   currentStateRef.current = {
     rawOpacities,
@@ -204,7 +206,6 @@ export default function App() {
       });
     };
 
-    // СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ПРОЗРАЧНОСТИ (Кноб 73)
     const applySmartOpacity = (stepMultiplier) => {
       const deltaVal = deltaStep * stepMultiplier;
 
@@ -267,10 +268,25 @@ export default function App() {
 
   }, [knobEvent]);
 
-  // ОБРАБОТКА ПЭДОВ, МАСОК, РАНДОМА, СБРОСА (63) И ПРЕСЕТОВ (61 + 62,64,65,67,69,71,72)
+  // ОБРАБОТКА ПЭДОВ, МАСОК, МОДИФИКАТОРОВ КАНАЛОВ (66/68/70), СБРОСА (63) И ПРЕСЕТОВ (61 + слоты)
   useEffect(() => {
     if (!noteOnEvent) return;
-    const { note, velocity, type, isSaveHeld: saveMode } = noteOnEvent;
+    const { note, velocity, type, isSaveHeld: saveMode, actionKey, channelIndex } = noteOnEvent;
+
+    // ДЕЙСТВИЯ НАД КАНАЛОМ ПО МОДИФИКАТОРАМ (66 — вытащить наверх; 68, 70 — зарезервированы)
+    if (type === 'channelAction') {
+      if (actionKey === 66 && channelIndex >= 0 && channelIndex < 4) {
+        setZIndices(prev => {
+          const maxZ = Math.max(...prev.slice(0, 4));
+          return prev.map((z, idx) => {
+            if (idx === 4) return maxZ + 2;
+            return idx === channelIndex ? maxZ + 1 : z;
+          });
+        });
+      }
+      // actionKey === 68 и actionKey === 70 — зарезервированы для будущих манипуляций с каналами
+      return;
+    }
 
     if (type === 'noteOn' && velocity > 0) {
       const currentChannel = activeChannelRef.current;
@@ -304,47 +320,9 @@ export default function App() {
         return;
       }
 
-      // Нижний ряд пэдов (36-39): Вывод канала на верхний план
-      if (note >= 36 && note <= 39) {
-        const trackIndex = note - 36;
-        setZIndices(prev => {
-          const maxZ = Math.max(...prev.slice(0, 4));
-          return prev.map((z, idx) => {
-            if (idx === 4) return maxZ + 2;
-            return idx === trackIndex ? maxZ + 1 : z;
-          });
-        });
-      }
-      
-      // Верхний ряд пэдов (40-43): Toggle Mute с запоминанием последней непрозрачности
-      if (note >= 40 && note <= 43) {
-        const trackIndex = note - 40;
-        setRawOpacities(prev => prev.map((op, idx) => {
-          if (idx !== trackIndex) return op;
-
-          if (op !== null && op > 0) {
-            savedOpacitiesRef.current[trackIndex] = op;
-            return null;
-          }
-
-          return savedOpacitiesRef.current[trackIndex] || 1;
-        }));
-      }
-
-      // Белые клавиши (48..60): Маски каналов (с Shift) или Мастер-пресеты (без Shift)
-      const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
-      if (MASK_KEYS.includes(note)) {
-        const maskIndex = MASK_KEYS.indexOf(note) + 1; 
-
-        if (currentChannel !== null) {
-          setMaskLevels(prev => prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m)));
-        } else {
-          setMasterMask(prev => (prev === maskIndex ? 0 : maskIndex));
-        }
-      }
-
-      // КЛАВИША 66: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ
-      if (note === 66) {
+      // НИЖНИЙ РЯД ПЭДОВ (36-38): РАНДОМ ПО КАТЕГОРИЯМ
+      // ПЭД 36: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ
+      if (note === 36) {
         if (currentChannel !== null) {
           setMaskLevels(prev => prev.map((m, idx) => {
             if (idx !== currentChannel) return m;
@@ -384,10 +362,11 @@ export default function App() {
           });
           setPositions([...positionsRef.current]);
         }
+        return;
       }
 
-      // КЛАВИША 68: РАНДОМ ЦВЕТА И ТЕКСТУР
-      if (note === 68) {
+      // ПЭД 37: РАНДОМ ЦВЕТА И ТЕКСТУР
+      if (note === 37) {
         const generateFxRecipe = () => {
           const recipe = randInt(0, 3);
           const filter = randInt(0, 10);
@@ -411,10 +390,11 @@ export default function App() {
         setPixelLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].pixel : v)));
         setThresholdLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].thresh : v)));
         setDelayLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].delay : v)));
+        return;
       }
 
-      // КЛАВИША 70: РАНДОМ МИКСА, СЛОЕВ И РИТМА
-      if (note === 70) {
+      // ПЭД 38: РАНДОМ МИКСА, СЛОЕВ И РИТМА
+      if (note === 38) {
         const speedPalette = [0.35, 0.65, 1.0, 1.0, 1.35, 1.75];
 
         if (currentChannel !== null) {
@@ -456,6 +436,41 @@ export default function App() {
 
           setPlaybackRates(prev => prev.map((r, idx) => (idx < 4 ? pickRandom(speedPalette) : r)));
         }
+        return;
+      }
+
+      // ПЭД 39: КОРОТКАЯ ПЛЁНОЧНАЯ ВСПЫШКА + ЗУМ-ИН АКТИВНЫХ КАНАЛОВ
+      if (note === 39) {
+        const intensity = Math.max(0.65, Math.min(1, velocity / 127));
+        setFlashSignal(prev => ({ count: prev.count + 1, intensity }));
+        return;
+      }
+      
+      // Верхний ряд пэдов (40-43): Toggle Mute с запоминанием последней непрозрачности
+      if (note >= 40 && note <= 43) {
+        const trackIndex = note - 40;
+        setRawOpacities(prev => prev.map((op, idx) => {
+          if (idx !== trackIndex) return op;
+
+          if (op !== null && op > 0) {
+            savedOpacitiesRef.current[trackIndex] = op;
+            return null;
+          }
+
+          return savedOpacitiesRef.current[trackIndex] || 1;
+        }));
+      }
+
+      // Белые клавиши (48..60): Маски каналов (с Shift) или Мастер-пресеты (без Shift)
+      const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
+      if (MASK_KEYS.includes(note)) {
+        const maskIndex = MASK_KEYS.indexOf(note) + 1; 
+
+        if (currentChannel !== null) {
+          setMaskLevels(prev => prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m)));
+        } else {
+          setMasterMask(prev => (prev === maskIndex ? 0 : maskIndex));
+        }
       }
     }
   }, [noteOnEvent]);
@@ -483,6 +498,7 @@ export default function App() {
         masterMask={masterMask}
         positions={positions}
         zIndices={zIndices}
+        flashSignal={flashSignal}
       />
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
@@ -497,6 +513,7 @@ export default function App() {
           <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
             target mode: {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
             {isSaveHeld ? ' | [SAVE 61 HELD]' : ''}
+            {heldActionKey !== null ? ` | [MOD ${heldActionKey} HELD]` : ''}
           </p>
           <p style={{ color: '#ffeb3b' }}>
             presets: {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})

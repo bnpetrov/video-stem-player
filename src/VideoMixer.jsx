@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 const MOVIE_TITLES = [
   "1. THE NEON HORIZON",
@@ -77,7 +77,22 @@ const wideOverlapColumns = [
   'inset(0% 0% 0% 62%)'    // Канал D: 62% - 100%
 ];
 
-export default function VideoMixer({ videos, opacities, volumes, playbackRates, zoomLevels, pixelLevels, thresholdLevels, filterLevels, delayLevels, maskLevels, masterMask, positions, zIndices }) {
+export default function VideoMixer({
+  videos,
+  opacities,
+  volumes,
+  playbackRates,
+  zoomLevels,
+  pixelLevels,
+  thresholdLevels,
+  filterLevels,
+  delayLevels,
+  maskLevels,
+  masterMask,
+  positions,
+  zIndices,
+  flashSignal = { count: 0, intensity: 0 }
+}) {
   const videoRefs = useRef([]);
   const ghost1Refs = useRef([]);
   const ghost2Refs = useRef([]);
@@ -90,12 +105,49 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
   const delayLevelsRef = useRef(delayLevels);
   const playbackRatesRef = useRef(playbackRates);
 
+  // Анимация короткой плёночной вспышки + зум-ин (Пэд 39)
+  const [flashLevel, setFlashLevel] = useState(0);
+  const flashValRef = useRef(0);
+  const flashRafRef = useRef(null);
+
   const upperLayerBlends = ['screen', 'lighten', 'exclusion', 'screen'];
 
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
     playbackRatesRef.current = playbackRates;
   }, [delayLevels, playbackRates]);
+
+  // ЗАПУСК И ПЛАВНОЕ ЗАТУХАНИЕ ВСПЫШКИ (160–200 мс, независимо от частоты монитора)
+  useEffect(() => {
+    if (!flashSignal || flashSignal.count === 0) return;
+
+    flashValRef.current = flashSignal.intensity || 1;
+    setFlashLevel(flashValRef.current);
+
+    if (flashRafRef.current) cancelAnimationFrame(flashRafRef.current);
+
+    let lastTime = performance.now();
+    const decay = (now) => {
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      flashValRef.current *= Math.exp(-dt * 15);
+
+      if (flashValRef.current < 0.015) {
+        flashValRef.current = 0;
+        setFlashLevel(0);
+        flashRafRef.current = null;
+        return;
+      }
+
+      setFlashLevel(flashValRef.current);
+      flashRafRef.current = requestAnimationFrame(decay);
+    };
+
+    flashRafRef.current = requestAnimationFrame(decay);
+    return () => {
+      if (flashRafRef.current) cancelAnimationFrame(flashRafRef.current);
+    };
+  }, [flashSignal]);
 
   // ГЛАВНЫЙ ИНТЕРВАЛ ВРЕМЕНИ ДЛЯ DELAY ВИДЕО (ЭХО)
   useEffect(() => {
@@ -226,6 +278,8 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
     }, visibleVideoIndices[0]);
   }
 
+  const hasAnyActiveLayer = visibleVideoIndices.length > 0 || (opacities[4] || 0) > 0.01;
+
   const getPairBlend = (idxA, idxB, currentIdx, upperBlend = 'screen') => {
     const visA = videos[idxA] && (opacities[idxA] || 0) > 0.01;
     const visB = videos[idxB] && (opacities[idxB] || 0) > 0.01;
@@ -253,7 +307,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       ? 'normal'
       : upperLayerBlends[index % upperLayerBlends.length];
 
-    // Когда мастер-пресет выключен, маска висит на самом видео и двигается вместе с ним
     if (!masterMask || masterMask === 0) {
       return {
         masterClip: 'none',
@@ -262,7 +315,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 1. Горизонтальный диптих (верх A+B, низ C+D)
     if (masterMask === 1) {
       return {
         masterClip: index < 2 ? 'inset(0% 0% 50% 0%)' : 'inset(50% 0% 0% 0%)',
@@ -271,7 +323,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 2. Вертикальный диптих (лево A+B, право C+D)
     if (masterMask === 2) {
       return {
         masterClip: index < 2 ? 'inset(0% 50% 0% 0%)' : 'inset(0% 0% 0% 50%)',
@@ -280,7 +331,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 3. 8 вертикальных полос с комбинациями наложений
     if (masterMask === 3) {
       return {
         masterClip: slicer8Combo[index],
@@ -289,7 +339,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 4. Панорамные колонны с мягким перехлестом
     if (masterMask === 4) {
       return {
         masterClip: wideOverlapColumns[index],
@@ -298,7 +347,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 5. Сетка 2x2
     if (masterMask === 5) {
       const grid2x2 = [
         'inset(0% 50% 50% 0%)',
@@ -309,7 +357,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       return { masterClip: grid2x2[index], channelClip: individualMask, blend: 'normal' };
     }
 
-    // 6. Круг в центре (A+B) поверх фона (C+D)
     if (masterMask === 6) {
       if (index < 2) {
         return {
@@ -325,18 +372,16 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 7. 4 ровные горизонтальные кино-полосы
     if (masterMask === 7) {
       const horizontalStrips = [
-        'inset(0% 0% 75% 0%)',   // Верхняя линия (Канал 1)
-        'inset(25% 0% 50% 0%)',  // Вторая линия (Канал 2)
-        'inset(50% 0% 25% 0%)',  // Третья линия (Канал 3)
-        'inset(75% 0% 0% 0%)'    // Нижняя линия (Канал 4)
+        'inset(0% 0% 75% 0%)',
+        'inset(25% 0% 50% 0%)',
+        'inset(50% 0% 25% 0%)',
+        'inset(75% 0% 0% 0%)'
       ];
       return { masterClip: horizontalStrips[index], channelClip: individualMask, blend: 'normal' };
     }
 
-    // 8. Триптих (центр A+B, лево C, право D)
     if (masterMask === 8) {
       if (index < 2) {
         return {
@@ -432,11 +477,14 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           if (!videoSrc) return null;
 
           const opacity = opacities[index] !== undefined ? opacities[index] : 0;
+          const isActive = opacity > 0.01;
+          const activeFlash = isActive ? flashLevel : 0;
+
           const { masterClip, channelClip, blend: rawBlendMode } = getMaskAndBlend(index);
-          // На 100% непрозрачности видео теряет режим наложения и становится обычным плотным слоем
           const currentBlendMode = opacity >= 0.999 ? 'normal' : rawBlendMode;
 
-          const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+          const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+          const currentZoom = baseZoom * (1 + activeFlash * 0.12);
           const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
           const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
 
@@ -452,6 +500,9 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
           if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
           if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
+          if (activeFlash > 0.01) {
+            activeFilters.push(`brightness(${(1 + activeFlash * 1.15).toFixed(2)}) contrast(${(1 + activeFlash * 0.35).toFixed(2)})`);
+          }
           const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
           const effectiveZIndex = masterMask === 6
@@ -484,7 +535,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
             clipPath: channelClip,
             filter: filterStyle,
             imageRendering: isPixelated ? 'pixelated' : 'auto',
-            transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
+            transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
             pointerEvents: 'none'
           };
 
@@ -530,13 +581,28 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         })}
       </div>
 
+      {/* КОРОТКАЯ ТЁПЛАЯ ПЛЁНОЧНАЯ ЗАСВЕТКА ПРИ СКЛЕЙКЕ (ПЭД 39) */}
+      {hasAnyActiveLayer && flashLevel > 0.01 && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 5,
+          backgroundColor: `rgba(255, 248, 232, ${(flashLevel * 0.32).toFixed(3)})`,
+          mixBlendMode: 'screen',
+          pointerEvents: 'none'
+        }} />
+      )}
+
       {/* ОТДЕЛЬНЫЙ ВЕРХНИЙ СЛОЙ: CREDITS (КАНАЛ 5, КЛАВИША 58) — ВСЕГДА ПОВЕРХ ВСЕГО */}
       {(() => {
         const index = 4;
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
+        const isActive = opacity > 0.01;
+        const activeFlash = isActive ? flashLevel : 0;
         const { channelClip } = getMaskAndBlend(index);
 
-        const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+        const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+        const currentZoom = baseZoom * (1 + activeFlash * 0.1);
         const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
 
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
@@ -551,6 +617,9 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
         if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
+        if (activeFlash > 0.01) {
+          activeFilters.push(`brightness(${(1 + activeFlash * 0.7).toFixed(2)})`);
+        }
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
         const creditsTransformStyle = {
@@ -565,7 +634,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           clipPath: channelClip,
           filter: filterStyle,
           imageRendering: isPixelated ? 'pixelated' : 'auto',
-          transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
+          transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
           pointerEvents: 'none'
         };
 

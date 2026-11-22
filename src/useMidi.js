@@ -7,15 +7,20 @@ export function useMidi() {
   const [stickEvent, setStickEvent] = useState(null); 
   
   const [heldChannel, setHeldChannel] = useState(null); 
+  const [heldActionKey, setHeldActionKey] = useState(null);
   const [isSaveHeld, setIsSaveHeld] = useState(false);
   const [heldPads, setHeldPads] = useState({});
+
   const pressureTrackRef = useRef({});
   const saveHeldRef = useRef(false);
+  const heldChannelRef = useRef(null);
+  const actionKeyRef = useRef(null);
 
   // 49, 51, 54, 56 — видео (0..3), 58 — 5-й канал (Титры)
   const CHANNEL_KEYS = [49, 51, 54, 56, 58]; 
   const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
-  const RANDOM_KEYS = [66, 68, 70];
+  // 66 — поднять канал наверх; 68, 70 — зарезервированы под будущие действия с каналами
+  const ACTION_MOD_KEYS = [66, 68, 70];
   const SAVE_KEY = 61;
   const RESET_KEY = 63;
   const PRESET_KEYS = [62, 64, 65, 67, 69, 71, 72];
@@ -63,11 +68,51 @@ export function useMidi() {
         return; 
       }
 
+      // Модификаторы действий над каналами (66, 68, 70)
+      if (ACTION_MOD_KEYS.includes(note)) {
+        if (isNoteOn) {
+          actionKeyRef.current = note;
+          setHeldActionKey(note);
+          if (heldChannelRef.current !== null) {
+            setNoteOnEvent({
+              note,
+              velocity,
+              type: 'channelAction',
+              actionKey: note,
+              channelIndex: heldChannelRef.current,
+              isSaveHeld: saveHeldRef.current,
+              time: now
+            });
+          }
+        } else if (isNoteOff) {
+          if (actionKeyRef.current === note) {
+            actionKeyRef.current = null;
+            setHeldActionKey(null);
+          }
+        }
+      }
+
+      // Клавиши каналов (49, 51, 54, 56, 58)
       if (CHANNEL_KEYS.includes(note)) {
         const channelIndex = CHANNEL_KEYS.indexOf(note);
         if (isNoteOn) {
+          heldChannelRef.current = channelIndex;
           setHeldChannel(channelIndex);
+          if (actionKeyRef.current !== null) {
+            setNoteOnEvent({
+              note,
+              velocity,
+              type: 'channelAction',
+              actionKey: actionKeyRef.current,
+              channelIndex,
+              isSaveHeld: saveHeldRef.current,
+              time: now
+            });
+          }
         } else if (isNoteOff) {
+          if (heldChannelRef.current === channelIndex) {
+            heldChannelRef.current = null;
+          }
           setHeldChannel(prev => (prev === channelIndex ? null : prev));
         }
       }
@@ -84,10 +129,9 @@ export function useMidi() {
 
       const isPad = note >= 36 && note <= 43;
       const isMaskKey = MASK_KEYS.includes(note);
-      const isRandomKey = RANDOM_KEYS.includes(note);
       const isPresetOrReset = note === RESET_KEY || PRESET_KEYS.includes(note);
 
-      if (isNoteOn && (isPad || isMaskKey || isRandomKey || isPresetOrReset)) {
+      if (isNoteOn && (isPad || isMaskKey || isPresetOrReset)) {
         pressureTrackRef.current[note] = { val: velocity, time: now, releasing: false };
         setHeldPads(prev => ({ ...prev, [note]: velocity }));
         setNoteOnEvent({ note, velocity, type: 'noteOn', isSaveHeld: saveHeldRef.current, time: now });
@@ -114,7 +158,7 @@ export function useMidi() {
         setHeldPads(p => (p[targetNote] !== undefined ? { ...p, [targetNote]: newPressure } : p));
         setNoteOnEvent({ note: targetNote, velocity: newPressure, type: 'aftertouch', isSaveHeld: saveHeldRef.current, time: now });
       } 
-      else if (isNoteOff && (isPad || isMaskKey || isRandomKey || isPresetOrReset)) {
+      else if (isNoteOff && (isPad || isMaskKey || isPresetOrReset)) {
         delete pressureTrackRef.current[note];
         setHeldPads(prev => {
           const next = { ...prev };
@@ -125,5 +169,5 @@ export function useMidi() {
     }
   }, []);
 
-  return { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, isSaveHeld, heldPads };
+  return { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldActionKey, isSaveHeld, heldPads };
 }
