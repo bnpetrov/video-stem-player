@@ -5,12 +5,15 @@ import VideoMixer from './VideoMixer';
 const OPACITY_STEP = 0.025;
 const MAX_MASTER_OPACITY = 1.0 - OPACITY_STEP; // 0.975 (на шаг ниже 100%)
 const round4 = (n) => Math.round(n * 10000) / 10000;
+const randRange = (min, max) => min + Math.random() * (max - min);
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export default function App() {
   const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
   const [videos, setVideos] = useState([]);
   
-  // 5 каналов: 0..3 — видео, 4 — титры кинофестиваля (клавиша 49)
+  // 5 каналов: 0..3 — видео (49, 51, 54, 56), 4 — титры кинофестиваля (58)
   // null = нулевой канал (мастер его не трогает); число <= 0 = активный канал, уведенный мастером в фейдаут
   const [rawOpacities, setRawOpacities] = useState([1, null, null, null, null]);
   const [volumes, setVolumes] = useState([1, 1, 1, 1, 1]);
@@ -29,6 +32,7 @@ export default function App() {
   const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
 
   const activeChannelRef = useRef(null);
+  const videosCountRef = useRef(0);
   
   const stickRef = useRef({ x: 0, y: 0 });
   const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
@@ -37,6 +41,10 @@ export default function App() {
   useEffect(() => {
     activeChannelRef.current = heldChannel;
   }, [heldChannel]);
+
+  useEffect(() => {
+    videosCountRef.current = videos.length;
+  }, [videos]);
 
   // ОБРАБОТКА ДЖОЙСТИКА
   useEffect(() => {
@@ -110,7 +118,6 @@ export default function App() {
             if (idx !== currentChannel) return v;
             const currentVisual = v === null ? 0 : Math.max(0, v);
             const nextVal = round4(Math.max(0, Math.min(1.0, currentVisual + deltaVal)));
-            // Если вручную увели канал в 0 — он становится нулевым (null), мастер его больше не трогает
             return nextVal <= 0 ? null : nextVal;
           });
         }
@@ -123,11 +130,9 @@ export default function App() {
         let appliedDelta = deltaVal;
 
         if (deltaVal > 0) {
-          // Если хоть один активный канал уже на шаге до 100% (или выше) — дальше не растем
           if (maxActive >= MAX_MASTER_OPACITY) return prev;
           appliedDelta = Math.min(deltaVal, MAX_MASTER_OPACITY - maxActive);
         } else {
-          // Если все активные каналы уже полностью в 0 — дальше вниз не уходим
           if (maxActive <= 0) return prev;
           appliedDelta = Math.max(deltaVal, -maxActive);
         }
@@ -167,19 +172,21 @@ export default function App() {
 
   }, [knobEvent]);
 
-  // ОБРАБОТКА ПЭДОВ И МАСОК (БЕЛЫЕ КЛАВИШИ)
+  // ОБРАБОТКА ПЭДОВ, МАСОК И РАНДОМ-КЛАВИШ (66, 68, 70)
   useEffect(() => {
     if (!noteOnEvent) return;
     const { note, velocity, type } = noteOnEvent;
 
     if (type === 'noteOn' && velocity > 0) {
+      const currentChannel = activeChannelRef.current;
+
       // Нижний ряд пэдов (36-39): Вывод канала на верхний план
       if (note >= 36 && note <= 39) {
         const trackIndex = note - 36;
         setZIndices(prev => {
           const maxZ = Math.max(...prev.slice(0, 4));
           return prev.map((z, idx) => {
-            if (idx === 4) return maxZ + 2; // Титры всегда остаются самым верхним слоем
+            if (idx === 4) return maxZ + 2;
             return idx === trackIndex ? maxZ + 1 : z;
           });
         });
@@ -192,12 +199,10 @@ export default function App() {
           if (idx !== trackIndex) return op;
 
           if (op !== null && op > 0) {
-            // Запоминаем текущую непрозрачность перед выключением
             savedOpacitiesRef.current[trackIndex] = op;
             return null;
-            }
+          }
 
-          // Возвращаем сохраненное значение (при первом включении — 1.0)
           return savedOpacitiesRef.current[trackIndex] || 1;
         }));
       }
@@ -206,12 +211,131 @@ export default function App() {
       const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
       if (MASK_KEYS.includes(note)) {
         const maskIndex = MASK_KEYS.indexOf(note) + 1; 
-        const currentChannel = activeChannelRef.current;
 
         if (currentChannel !== null) {
           setMaskLevels(prev => prev.map((m, idx) => (idx === currentChannel ? (m === maskIndex ? 0 : maskIndex) : m)));
         } else {
           setMasterMask(prev => (prev === maskIndex ? 0 : maskIndex));
+        }
+      }
+
+      // КЛАВИША 66: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ (Маски, сплиты, зум, позиция)
+      if (note === 66) {
+        if (currentChannel !== null) {
+          setMaskLevels(prev => prev.map((m, idx) => {
+            if (idx !== currentChannel) return m;
+            let next = randInt(0, 8);
+            if (next === m) next = (m + randInt(1, 7)) % 9;
+            return next;
+          }));
+          setZoomLevels(prev => prev.map((z, idx) => (idx === currentChannel ? round4(randRange(0.8, 2.2)) : z)));
+          const centered = Math.random() < 0.3;
+          positionsRef.current[currentChannel] = centered
+            ? { x: 0, y: 0 }
+            : { x: randRange(-18, 18), y: randRange(-18, 18) };
+          setPositions([...positionsRef.current]);
+        } else {
+          const useMasterSplit = Math.random() < 0.65;
+          if (useMasterSplit) {
+            setMasterMask(prev => {
+              let next = randInt(1, 8);
+              if (next === prev) next = (prev % 8) + 1;
+              return next;
+            });
+            setMaskLevels(prev => prev.map((m, idx) => (idx < 4 ? 0 : m)));
+          } else {
+            setMasterMask(0);
+            setMaskLevels(prev => prev.map((m, idx) => {
+              if (idx >= 4) return m;
+              return Math.random() < 0.55 ? randInt(1, 8) : 0;
+            }));
+          }
+
+          setZoomLevels(prev => prev.map((z, idx) => (idx < 4 ? round4(randRange(0.95, 1.85)) : z)));
+          positionsRef.current = positionsRef.current.map((pos, idx) => {
+            if (idx >= 4) return pos;
+            return Math.random() < 0.45
+              ? { x: 0, y: 0 }
+              : { x: randRange(-14, 14), y: randRange(-14, 14) };
+          });
+          setPositions([...positionsRef.current]);
+        }
+      }
+
+      // КЛАВИША 68: РАНДОМ ЦВЕТА И ТЕКСТУР (Кино-фильтры, порог, пикселизация, эхо)
+      if (note === 68) {
+        const generateFxRecipe = () => {
+          const recipe = randInt(0, 3);
+          const filter = randInt(0, 10);
+          if (recipe === 0) {
+            // Чистая кино-колористика + легкий шлейф
+            return { filter, pixel: 0, thresh: 0, delay: Math.random() < 0.45 ? randInt(20, 48) : 0 };
+          }
+          if (recipe === 1) {
+            // Графический постеризатор в читаемом диапазоне
+            return { filter, pixel: 0, thresh: randInt(22, 58), delay: Math.random() < 0.5 ? randInt(25, 55) : 0 };
+          }
+          if (recipe === 2) {
+            // Ретро-мозаика без перегруза
+            return { filter, pixel: randInt(10, 38), thresh: 0, delay: Math.random() < 0.35 ? randInt(15, 40) : 0 };
+          }
+          // Хроматический Delay-шлейф
+          return { filter, pixel: 0, thresh: 0, delay: randInt(45, 88) };
+        };
+
+        const targets = currentChannel !== null ? [currentChannel] : [0, 1, 2, 3];
+        const nextFx = {};
+        targets.forEach(idx => { nextFx[idx] = generateFxRecipe(); });
+
+        setFilterLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].filter : v)));
+        setPixelLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].pixel : v)));
+        setThresholdLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].thresh : v)));
+        setDelayLevels(prev => prev.map((v, idx) => (nextFx[idx] ? nextFx[idx].delay : v)));
+      }
+
+      // КЛАВИША 70: РАНДОМ МИКСА, СЛОЕВ И РИТМА (Прозрачность, z-order, скорость)
+      if (note === 70) {
+        const speedPalette = [0.35, 0.65, 1.0, 1.0, 1.35, 1.75];
+
+        if (currentChannel !== null) {
+          setPlaybackRates(prev => prev.map((r, idx) => (idx === currentChannel ? pickRandom(speedPalette) : r)));
+          setRawOpacities(prev => prev.map((op, idx) => {
+            if (idx !== currentChannel) return op;
+            const steps = randInt(18, 40); // 45% .. 100%
+            return round4(steps * OPACITY_STEP);
+          }));
+        } else {
+          const availableCount = videosCountRef.current > 0 ? Math.min(4, videosCountRef.current) : 4;
+          const indices = Array.from({ length: availableCount }, (_, i) => i);
+          // Перемешиваем каналы
+          for (let i = indices.length - 1; i > 0; i--) {
+            const j = randInt(0, i);
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+          }
+
+          const activeCount = availableCount === 1 ? 1 : randInt(1, Math.min(3, availableCount));
+          const activeSet = new Set(indices.slice(0, activeCount));
+          const solidCut = activeCount === 1 || Math.random() < 0.25;
+
+          setRawOpacities(prev => prev.map((op, idx) => {
+            if (idx === 4) return op; // Титры не трогаем
+            if (!activeSet.has(idx)) return null;
+            if (solidCut && idx === indices[0]) return 1;
+            const steps = randInt(18, 38); // 45% .. 95% (чтобы работали режимы наложения)
+            return round4(steps * OPACITY_STEP);
+          }));
+
+          setZIndices(prev => {
+            const baseZ = Math.max(...prev.slice(0, 4)) + 1;
+            const orderMap = {};
+            indices.forEach((chIdx, pos) => { orderMap[chIdx] = baseZ + pos; });
+            return prev.map((z, idx) => {
+              if (idx === 4) return baseZ + 10;
+              return orderMap[idx] !== undefined ? orderMap[idx] : z;
+            });
+          });
+
+          setPlaybackRates(prev => prev.map((r, idx) => (idx < 4 ? pickRandom(speedPalette) : r)));
         }
       }
     }
