@@ -32,6 +32,7 @@ export default function App() {
   
   const stickRef = useRef({ x: 0, y: 0 });
   const positionsRef = useRef([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]);
+  const savedOpacitiesRef = useRef([1, 1, 1, 1, 1]);
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
@@ -184,14 +185,20 @@ export default function App() {
         });
       }
       
-      // Верхний ряд пэдов (40-43): Мгновенный Toggle Mute канала (100% <-> null)
+      // Верхний ряд пэдов (40-43): Toggle Mute с запоминанием последней непрозрачности
       if (note >= 40 && note <= 43) {
         const trackIndex = note - 40;
         setRawOpacities(prev => prev.map((op, idx) => {
-          if (idx === trackIndex) {
-            return (op !== null && op > 0) ? null : 1; 
-          }
-          return op;
+          if (idx !== trackIndex) return op;
+
+          if (op !== null && op > 0) {
+            // Запоминаем текущую непрозрачность перед выключением
+            savedOpacitiesRef.current[trackIndex] = op;
+            return null;
+            }
+
+          // Возвращаем сохраненное значение (при первом включении — 1.0)
+          return savedOpacitiesRef.current[trackIndex] || 1;
         }));
       }
 

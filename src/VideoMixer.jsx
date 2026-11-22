@@ -245,7 +245,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       return {
         masterClip: 'none',
         channelClip: individualMask,
-        blend: 'screen'
+        blend: 'normal'
       };
     }
 
@@ -325,7 +325,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // 7. 4 ровные горизонтальные кино-полосы (замена треугольников)
+    // 7. 4 ровные горизонтальные кино-полосы
     if (masterMask === 7) {
       const horizontalStrips = [
         'inset(0% 0% 75% 0%)',   // Верхняя линия (Канал 1)
@@ -425,25 +425,124 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         </defs>
       </svg>
 
-      {[0, 1, 2, 3, 4].map((index) => {
-        const isCredits = index === 4;
-        const videoSrc = videos[index];
+      {/* НИЖНИЙ ИЗОЛИРОВАННЫЙ СЛОЙ: ВСЕ ВИДЕОКАНАЛЫ (0..3) */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, isolation: 'isolate' }}>
+        {[0, 1, 2, 3].map((index) => {
+          const videoSrc = videos[index];
+          if (!videoSrc) return null;
 
-        if (!isCredits && !videoSrc) return null;
+          const opacity = opacities[index] !== undefined ? opacities[index] : 0;
+          const { masterClip, channelClip, blend: rawBlendMode } = getMaskAndBlend(index);
+          // На 100% непрозрачности видео теряет режим наложения и становится обычным плотным слоем
+          const currentBlendMode = opacity >= 0.999 ? 'normal' : rawBlendMode;
 
+          const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
+          const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
+          const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
+
+          const isPixelated = pixelLevels && pixelLevels[index] > 1;
+          const isThresholded = thresholdLevels && thresholdLevels[index] > 0.5;
+          const currentDelay = delayLevels && delayLevels[index] !== undefined ? delayLevels[index] : 0;
+
+          const filterIdx = filterLevels && filterLevels[index] !== undefined ? Math.round(filterLevels[index]) : 0;
+          const safeFilterIdx = Math.max(0, Math.min(cssFilters.length - 1, filterIdx));
+          const selectedCssFilter = cssFilters[safeFilterIdx];
+
+          const activeFilters = [];
+          if (isPixelated) activeFilters.push(`url(#pixelate-${index})`);
+          if (isThresholded) activeFilters.push(`url(#threshold-${index})`);
+          if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
+          const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
+
+          const effectiveZIndex = masterMask === 6
+            ? (index < 2 ? 20 + (currentZIndex % 10) : currentZIndex % 10)
+            : currentZIndex;
+
+          const masterSlotStyle = {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            clipPath: masterClip,
+            mixBlendMode: currentBlendMode,
+            transition: 'clip-path 0.2s ease-out, opacity 0.1s ease-out',
+            pointerEvents: 'none',
+            zIndex: effectiveZIndex,
+            overflow: 'hidden'
+          };
+
+          const mediaTransformStyle = {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            translate: `${currentPos.x}% ${currentPos.y}%`,
+            scale: currentZoom,
+            clipPath: channelClip,
+            filter: filterStyle,
+            imageRendering: isPixelated ? 'pixelated' : 'auto',
+            transition: 'scale 0.08s linear, clip-path 0.2s ease-out',
+            pointerEvents: 'none'
+          };
+
+          const ghost1Filter = `${filterStyle !== 'none' ? filterStyle : ''} hue-rotate(25deg) saturate(1.4)`.trim();
+          const ghost2Filter = `${filterStyle !== 'none' ? filterStyle : ''} hue-rotate(-35deg) saturate(1.6)`.trim();
+
+          const ghost1Opacity = opacity * (currentDelay / 100) * 0.65;
+          const ghost2Opacity = opacity * (currentDelay / 100) * 0.38;
+
+          return (
+            <div key={index} style={{ ...masterSlotStyle, opacity }}>
+              <video
+                ref={el => videoRefs.current[index] = el}
+                src={videoSrc}
+                autoPlay
+                loop
+                style={mediaTransformStyle}
+              />
+
+              {currentDelay > 1 && (
+                <video
+                  ref={el => ghost1Refs.current[index] = el}
+                  src={videoSrc}
+                  autoPlay
+                  loop
+                  muted
+                  style={{ ...mediaTransformStyle, filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}
+                />
+              )}
+
+              {currentDelay > 1 && (
+                <video
+                  ref={el => ghost2Refs.current[index] = el}
+                  src={videoSrc}
+                  autoPlay
+                  loop
+                  muted
+                  style={{ ...mediaTransformStyle, filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ОТДЕЛЬНЫЙ ВЕРХНИЙ СЛОЙ: CREDITS (КАНАЛ 5, КЛАВИША 58) — ВСЕГДА ПОВЕРХ ВСЕГО */}
+      {(() => {
+        const index = 4;
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
-        const { masterClip, channelClip, blend: rawBlendMode } = getMaskAndBlend(index);
-        // На 100% непрозрачности видео теряет режим наложения и становится обычным плотным слоем
-        const currentBlendMode = (!isCredits && opacity >= 0.999) ? 'normal' : rawBlendMode;
+        const { channelClip } = getMaskAndBlend(index);
 
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
-        const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};
-        const currentZIndex = zIndices && zIndices[index] !== undefined ? zIndices[index] : index;
-        
+        const currentPos = positions[index] !== undefined ? positions[index] : { x: 0, y: 0 };
+
         const isPixelated = pixelLevels && pixelLevels[index] > 1;
-        const isThresholded = thresholdLevels && thresholdLevels[index] > 0.5; 
+        const isThresholded = thresholdLevels && thresholdLevels[index] > 0.5;
         const currentDelay = delayLevels && delayLevels[index] !== undefined ? delayLevels[index] : 0;
-        
+
         const filterIdx = filterLevels && filterLevels[index] !== undefined ? Math.round(filterLevels[index]) : 0;
         const safeFilterIdx = Math.max(0, Math.min(cssFilters.length - 1, filterIdx));
         const selectedCssFilter = cssFilters[safeFilterIdx];
@@ -454,33 +553,13 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         if (selectedCssFilter !== 'none') activeFilters.push(selectedCssFilter);
         const filterStyle = activeFilters.length > 0 ? activeFilters.join(' ') : 'none';
 
-        const effectiveZIndex = isCredits
-          ? 100
-          : (masterMask === 6 && index < 4)
-            ? (index < 2 ? 20 + (currentZIndex % 10) : currentZIndex % 10)
-            : currentZIndex;
-
-        const masterSlotStyle = {
+        const creditsTransformStyle = {
           position: 'absolute',
           top: 0,
           left: 0,
           width: '100%',
           height: '100%',
-          clipPath: masterClip,
-          mixBlendMode: currentBlendMode,
-          transition: 'clip-path 0.2s ease-out, opacity 0.1s ease-out',
-          pointerEvents: 'none',
-          zIndex: effectiveZIndex,
-          overflow: 'hidden'
-        };
-
-        const mediaTransformStyle = {
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
+          overflow: 'hidden',
           translate: `${currentPos.x}% ${currentPos.y}%`,
           scale: currentZoom,
           clipPath: channelClip,
@@ -496,66 +575,38 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         const ghost1Opacity = opacity * (currentDelay / 100) * 0.65;
         const ghost2Opacity = opacity * (currentDelay / 100) * 0.38;
 
-        if (isCredits) {
-          return (
-            <div key={index} style={{ ...masterSlotStyle, opacity }}>
-              <div style={{ ...mediaTransformStyle, overflow: 'hidden' }}>
-                {renderCreditsList(creditsMainRef)}
-              </div>
-              
-              {currentDelay > 1 && (
-                <div style={{ ...mediaTransformStyle, overflow: 'hidden', filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}>
-                  {renderCreditsList(creditsGhost1Ref)}
-                </div>
-              )}
-
-              {currentDelay > 1 && (
-                <div style={{ ...mediaTransformStyle, overflow: 'hidden', filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}>
-                  {renderCreditsList(creditsGhost2Ref)}
-                </div>
-              )}
-            </div>
-          );
-        }
-
         return (
-          <div key={index} style={{ ...masterSlotStyle, opacity }}>
-            <video
-              ref={el => videoRefs.current[index] = el}
-              src={videoSrc}
-              autoPlay
-              loop
-              style={mediaTransformStyle}
-            />
-            
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 10,
+            opacity,
+            transition: 'opacity 0.1s ease-out',
+            pointerEvents: 'none',
+            overflow: 'hidden'
+          }}>
+            <div style={creditsTransformStyle}>
+              {renderCreditsList(creditsMainRef)}
+            </div>
+
             {currentDelay > 1 && (
-              <video
-                ref={el => ghost1Refs.current[index] = el}
-                src={videoSrc}
-                autoPlay
-                loop
-                muted 
-                style={{ ...mediaTransformStyle, filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}
-              />
+              <div style={{ ...creditsTransformStyle, filter: ghost1Filter, opacity: ghost1Opacity, mixBlendMode: 'screen' }}>
+                {renderCreditsList(creditsGhost1Ref)}
+              </div>
             )}
 
             {currentDelay > 1 && (
-              <video
-                ref={el => ghost2Refs.current[index] = el}
-                src={videoSrc}
-                autoPlay
-                loop
-                muted
-                style={{ ...mediaTransformStyle, filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}
-              />
+              <div style={{ ...creditsTransformStyle, filter: ghost2Filter, opacity: ghost2Opacity, mixBlendMode: 'screen' }}>
+                {renderCreditsList(creditsGhost2Ref)}
+              </div>
             )}
           </div>
         );
-      })}
+      })()}
       
       {videos.length === 0 && opacities[4] === 0 && (
         <div style={{ color: '#555', display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-          <h2>Загрузите видео (до 4 шт.) или включите титры (Ch 49 + Knob 73)</h2>
+          <h2>Загрузите видео (до 4 шт.) или включите титры (Ch 58 + Knob 73)</h2>
         </div>
       )}
     </div>

@@ -11,7 +11,7 @@ export function useMidi() {
   const pressureTrackRef = useRef({});
 
   // 49 — 5-й канал (Титры)
-  const CHANNEL_KEYS = [51, 54, 56, 58, 49]; 
+  const CHANNEL_KEYS = [49, 51, 54, 56, 58]; 
   const MASK_KEYS = [48, 50, 52, 53, 55, 57, 59, 60];
 
   useEffect(() => {
