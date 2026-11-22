@@ -432,7 +432,9 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
         if (!isCredits && !videoSrc) return null;
 
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
-        const { masterClip, channelClip, blend: currentBlendMode } = getMaskAndBlend(index);
+        const { masterClip, channelClip, blend: rawBlendMode } = getMaskAndBlend(index);
+        // На 100% непрозрачности видео теряет режим наложения и становится обычным плотным слоем
+        const currentBlendMode = (!isCredits && opacity >= 0.999) ? 'normal' : rawBlendMode;
 
         const currentZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentPos = positions[index] !== undefined ? positions[index] : {x:0, y:0};

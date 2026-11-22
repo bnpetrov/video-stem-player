@@ -2,12 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useMidi } from './useMidi';
 import VideoMixer from './VideoMixer';
 
+const OPACITY_STEP = 0.025;
+const MAX_MASTER_OPACITY = 1.0 - OPACITY_STEP; // 0.975 (на шаг ниже 100%)
+const round4 = (n) => Math.round(n * 10000) / 10000;
+
 export default function App() {
   const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel } = useMidi();
   const [videos, setVideos] = useState([]);
   
   // 5 каналов: 0..3 — видео, 4 — титры кинофестиваля (клавиша 49)
-  const [opacities, setOpacities] = useState([1, 0, 0, 0, 0]);
+  // null = нулевой канал (мастер его не трогает); число <= 0 = активный канал, уведенный мастером в фейдаут
+  const [rawOpacities, setRawOpacities] = useState([1, null, null, null, null]);
   const [volumes, setVolumes] = useState([1, 1, 1, 1, 1]);
   const [playbackRates, setPlaybackRates] = useState([1, 1, 1, 1, 1]); 
   const [zoomLevels, setZoomLevels] = useState([1, 1, 1, 1, 1]); 
@@ -19,6 +24,9 @@ export default function App() {
   const [masterMask, setMasterMask] = useState(0); // 0 = Free Mix, 1..8 = Выставочные сплит-композиции
   const [positions, setPositions] = useState([{x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}]); 
   const [zIndices, setZIndices] = useState([0, 1, 2, 3, 4]); 
+
+  // Визуальные значения прозрачности (0..1) для микшера и дебага
+  const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
 
   const activeChannelRef = useRef(null);
   
@@ -90,6 +98,45 @@ export default function App() {
       });
     };
 
+    // СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ПРОЗРАЧНОСТИ (Кноб 73)
+    const applySmartOpacity = (stepMultiplier) => {
+      const deltaVal = deltaStep * stepMultiplier;
+
+      setRawOpacities(prev => {
+        // ПОКАНАЛЬНЫЙ РЕЖИМ: полный диапазон 0..100%
+        if (currentChannel !== null) {
+          return prev.map((v, idx) => {
+            if (idx !== currentChannel) return v;
+            const currentVisual = v === null ? 0 : Math.max(0, v);
+            const nextVal = round4(Math.max(0, Math.min(1.0, currentVisual + deltaVal)));
+            // Если вручную увели канал в 0 — он становится нулевым (null), мастер его больше не трогает
+            return nextVal <= 0 ? null : nextVal;
+          });
+        }
+
+        // МАСТЕР-РЕЖИМ: сохраняем баланс, не трогаем null-каналы, упираемся в 97.5% сверху и в полный фейдаут снизу
+        const activeValues = prev.filter(v => v !== null);
+        if (activeValues.length === 0) return prev;
+
+        const maxActive = Math.max(...activeValues);
+        let appliedDelta = deltaVal;
+
+        if (deltaVal > 0) {
+          // Если хоть один активный канал уже на шаге до 100% (или выше) — дальше не растем
+          if (maxActive >= MAX_MASTER_OPACITY) return prev;
+          appliedDelta = Math.min(deltaVal, MAX_MASTER_OPACITY - maxActive);
+        } else {
+          // Если все активные каналы уже полностью в 0 — дальше вниз не уходим
+          if (maxActive <= 0) return prev;
+          appliedDelta = Math.max(deltaVal, -maxActive);
+        }
+
+        if (appliedDelta === 0) return prev;
+
+        return prev.map(v => (v === null ? null : round4(v + appliedDelta)));
+      });
+    };
+
     const applyMasterLockedVolume = (stepMultiplier, setter) => {
       const deltaVal = deltaStep * stepMultiplier;
 
@@ -111,7 +158,7 @@ export default function App() {
     if (knob === 70) applyRelativeEffect(0, 2.0, 0.02, setPlaybackRates);    // Скорость и фриз
     if (knob === 71) applyRelativeEffect(0, 100, 1.2, setPixelLevels);       // Мозаика / Пикселизация
     if (knob === 72) applyRelativeEffect(0, 10, 0.18, setFilterLevels);      // Кино-колористика (11 пресетов)
-    if (knob === 73) applyRelativeEffect(0, 1.0, 0.025, setOpacities);       // Плавная непрозрачность
+    if (knob === 73) applySmartOpacity(OPACITY_STEP);                        // Умная непрозрачность с сохранением микса
     if (knob === 74) applyRelativeEffect(0.35, 3.5, 0.035, setZoomLevels);   // Кадрированный зум
     if (knob === 75) applyRelativeEffect(0, 100, 1.2, setThresholdLevels);   // Графический постеризатор (Threshold)
     if (knob === 76) applyRelativeEffect(0, 100, 1.2, setDelayLevels);       // Хроматическое эхо (Delay)
@@ -137,12 +184,12 @@ export default function App() {
         });
       }
       
-      // Верхний ряд пэдов (40-43): Мгновенный Toggle Mute канала
+      // Верхний ряд пэдов (40-43): Мгновенный Toggle Mute канала (100% <-> null)
       if (note >= 40 && note <= 43) {
         const trackIndex = note - 40;
-        setOpacities(prev => prev.map((op, idx) => {
+        setRawOpacities(prev => prev.map((op, idx) => {
           if (idx === trackIndex) {
-            return op > 0 ? 0 : 1; 
+            return (op !== null && op > 0) ? null : 1; 
           }
           return op;
         }));
