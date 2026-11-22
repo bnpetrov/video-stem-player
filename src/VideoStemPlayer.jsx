@@ -31,23 +31,29 @@ const INITIAL_STATE = {
   savedOpacities: [1, 1, 1, 1, 1]
 };
 
-// ЗАХАРДКОЖЕННЫЙ ПРЕСЕТ НА КЛАВИШЕ 72 (не перезаписывается через Save — замени значения на свои)
+// ЗАХАРДКОЖЕННЫЙ ПРЕСЕТ НА КЛАВИШЕ 72 (не перезаписывается через Save)
 const HARDCODED_PRESET_72 = {
-  rawOpacities: [0.85, 0.75, 0.6, null, 0.9],
-  volumes: [1, 0.8, 0.6, 1, 1],
-  playbackRates: [0.75, 1.25, 1.0, 1.0, 1.0],
-  zoomLevels: [1.15, 1.4, 1.0, 1.0, 1.0],
-  pixelLevels: [0, 16, 0, 0, 0],
-  thresholdLevels: [0, 0, 35, 0, 0],
-  filterLevels: [3, 6, 1, 0, 0],
-  delayLevels: [35, 0, 50, 0, 20],
-  maskLevels: [0, 1, 0, 0, 0],
+  rawOpacities: [0.93, 0.73, null, 0.55, 0.55],
+  volumes: [0, 0, 0, 0, 0.1],
+  playbackRates: [1.35, 1.35, 0.35, 1.0, 2.0],
+  zoomLevels: [1.65, 1.57, 1.64, 1.0, 1.02],
+  pixelLevels: [0, 0, 38, 0, 0],
+  thresholdLevels: [0, 0, 0, 0, 0],
+  filterLevels: [8, 2, 10, 2, 9],
+  delayLevels: [37, 52, 0, 31, 18],
+  maskLevels: [8, 0, 1, 0, 0],
   invertedMasks: [false, false, false, false, false],
-  blendModes: [0, 0, 2, 6, -1],
-  masterMask: 3,
-  positions: [{ x: 0, y: 0 }, { x: -8, y: 5 }, { x: 10, y: -5 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
-  zIndices: [10, 11, 12, 9, 20],
-  savedOpacities: [0.85, 0.75, 0.6, 1, 0.9]
+  blendModes: [0, 0, 2, 6, 1], // T1: BASE, T2: screen, T3: lighten, T4: exclusion, T5: multiply
+  masterMask: 0,
+  positions: [
+    { x: -31, y: -4 },
+    { x: 4, y: 4 },
+    { x: -6, y: 8 },
+    { x: 0, y: 0 },
+    { x: 15, y: 0 }
+  ],
+  zIndices: [1448, 1449, 1451, 1450, 1458],
+  savedOpacities: [0.93, 0.73, 1, 0.55, 0.55]
 };
 
 const cloneSnapshot = (s) => ({

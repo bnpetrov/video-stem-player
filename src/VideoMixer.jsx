@@ -827,7 +827,7 @@ export default function VideoMixer({
       
       {videos.length === 0 && opacities[4] === 0 && (
         <div style={{ color: '#555', display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
-          Загрузите видео (до 4 шт.) или включите титры (Ch 58 + Knob 73)
+          scroll down to load media
         </div>
       )}
     </div>
