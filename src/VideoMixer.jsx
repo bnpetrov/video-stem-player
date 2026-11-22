@@ -13,36 +13,59 @@ export const BLEND_MODES = [
 ];
 
 const MOVIE_TITLES = [
-  "1. THE NEON HORIZON",
-  "2. MIDNIGHT PROTOCOL",
-  "3. ECHOES OF TOMORROW",
-  "4. SOLARIS DESCENT",
-  "5. QUANTUM PARADOX",
-  "6. NEUROMANCER'S DREAM",
-  "7. CYBERDYNE SYSTEMS",
-  "8. BLADE RUNNER'S LEGACY",
-  "9. GHOST IN THE MACHINE",
-  "10. MATRIX RELOADED",
-  "11. VOID WALKER",
-  "12. STARLIGHT EXPRESS",
-  "13. EVENT HORIZON",
-  "14. DARK STAR",
-  "15. INTERSTELLAR OVERDRIVE",
-  "16. GALACTIC REBELLION",
-  "17. ASTEROID MINERS",
-  "18. SUPERNOVA SERENADE",
-  "19. BLACK HOLE SUN",
-  "20. NEBULA NAVIGATORS",
-  "21. COSMIC DRIFTERS",
-  "22. TIME PARADOX",
-  "23. CHRONOS ENGINE",
-  "24. FUTURE PAST",
-  "25. RETROGRADE",
-  "26. SYNTHWAVE NIGHTS",
-  "27. ARCADE CHAMPION",
-  "28. PIXEL WARRIORS",
-  "29. DIGITAL FRONTIER",
-  "30. VIRTUAL INSANITY"
+  // WED, 23.09.
+  "JIM QUEEN",
+
+  // THU, 24.09.
+  "OECHER 1\nSHORTS",
+  "SCHAU MICH NICHT SO BÖSE AN",
+  "EINE KRANKHEIT WIE EIN GEDICHT",
+  "ON THE SILVER GLOBE",
+  "NUNKUI",
+  "GHOST IN THE CELL",
+
+  // FRI, 25.09.
+  "ANCESTRAL VISIONS OF FUTURE",
+  "UNTER EINEM DACH",
+  "WHISPERS IN MAY",
+  "UCHRONIA",
+  "NOAH",
+  "ZUSAMMEN IST MAN WENIGER GETRENNT",
+  "LIGHT PILLAR",
+  "BEGOTTEN",
+  "THE UNCERTAINTY PRINCIPLE",
+  "LOST SIGHT OF THE LANDSCAPE",
+  "LET'S SCARE JESSICA TO DEATH",
+  "KINKI",
+
+  // SAT, 26.09.
+  "OECHER II\nOPTISCHE SCHREIE",
+  "THEY COME OUT OF MARGO",
+  "MAL SEHEN WAS DRAUS WIRD",
+  "FILMFARSI",
+  "OECHER III\nSHORTS",
+  "SERMON TO THE VOID",
+  "SHORTS\nRESTRICTED MOVEMENT",
+  "DER TRAUM DES VATERS + AMORE",
+  "DIY SHORTS",
+  "BETTER GO MAD IN THE WILD",
+  "LONDON",
+  "HUMAN RESOURCE",
+  "HABIBI HUSSEIN",
+  "HOTSPRING SHARK ATTACK II",
+
+  // SUN, 27.09.
+  "THOSE WHO DO NOT DROWN (+FACELESS)",
+  "EINE ZUFÄLLIGE BEGEGNUNG",
+  "IM TOTEN WINKEL DER WAHRNEHMUNG",
+  "OECHER IV\nDIRTY TALKS",
+  "I GREW AN INCH WHEN MY FATHER DIED",
+  "TOXIC",
+  "NOTHING REMAINS, NOTHING DISAPPEARS",
+  "GLÜCK ALLEIN + STICHPUNKT HERZ",
+  "FLESH FOR FRANKENSTEIN",
+  "NINJA MOTHERF*CKING DESTRUCTION",
+  "LONIEST MAN IN TOWN"
 ];
 
 // КУРАТОРСКАЯ ПАЛИТРА КИНО-ФИЛЬТРОВ (11 пресетов)
@@ -104,8 +127,7 @@ const wideOverlapColumns = [
   'inset(0% 0% 0% 62%)'
 ];
 
-// Диапазон длины лупа (сек) от силы нажатия пэда 39:
-// 1 (лёгкий удар) -> 0.12с (жёсткий глитч), 127 (максимум) -> 0.65с (динамичный, но плавный кусок)
+// Диапазон длины лупа (сек) от силы нажатия пэда 39
 const MIN_LOOP_SEC = 0.3;
 const MAX_LOOP_SEC = 1;
 const MIN_TAP_HOLD_MS = 160;
@@ -188,7 +210,6 @@ export default function VideoMixer({
 
       repeatStartTimeRef.current = performance.now();
 
-      // Если пользователь набивает быструю серию тапов — сохраняем самую первую исходную точку
       const prevOriginals = new Map(
         repeatTargetsRef.current.map(({ index, originalTime }) => [index, originalTime])
       );
@@ -543,7 +564,7 @@ export default function VideoMixer({
         width: '100%',
         textAlign: 'center',
         color: '#ffffff',
-        fontFamily: 'monospace, sans-serif',
+        fontFamily: 'inherit', // Подхватит шрифт сайта при интеграции
         fontSize: '2.2rem',
         fontWeight: 'bold',
         letterSpacing: '3px',
@@ -552,7 +573,18 @@ export default function VideoMixer({
       }}
     >
       {[...MOVIE_TITLES, ...MOVIE_TITLES].map((title, i) => (
-        <div key={i} style={{ padding: '18px 0' }}>
+        <div
+          key={i}
+          style={{
+            maxWidth: '65%',
+            margin: '0 auto',
+            padding: '24px 16px',
+            lineHeight: '1.15',
+            textWrap: 'balance',
+            whiteSpace: 'pre-line',
+            overflowWrap: 'break-word'
+          }}
+        >
           {title}
         </div>
       ))}
@@ -561,9 +593,13 @@ export default function VideoMixer({
 
   return (
     <div style={{
-      position: 'relative', width: '100%', height: '60vh',
-      backgroundColor: '#050505', overflow: 'hidden', borderRadius: '12px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.6)'
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#050505',
+      overflow: 'hidden',
+      borderRadius: '24px',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.7)'
     }}>
       
       <svg width="0" height="0" style={{ position: 'absolute' }}>
@@ -790,7 +826,7 @@ export default function VideoMixer({
       })()}
       
       {videos.length === 0 && opacities[4] === 0 && (
-        <div style={{ color: '#555', display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: '#555', display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
           <h2>Загрузите видео (до 4 шт.) или включите титры (Ch 58 + Knob 73)</h2>
         </div>
       )}

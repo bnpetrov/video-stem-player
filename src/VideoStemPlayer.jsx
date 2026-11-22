@@ -68,7 +68,7 @@ const cloneSnapshot = (s) => ({
   savedOpacities: [...s.savedOpacities]
 });
 
-export default function App() {
+export default function VideoStemPlayer() {
   const { midiLog, noteOnEvent, knobEvent, stickEvent, heldChannel, heldActionKey, isSaveHeld, heldPads } = useMidi();
   const [videos, setVideos] = useState([]);
   
@@ -94,7 +94,7 @@ export default function App() {
   });
   const [presetStatus, setPresetStatus] = useState('init');
 
-  // Пэд 39: Jump-Cut + Beat Repeat (сила нажатия / aftertouch задаёт длину лупа 0.12–0.65 сек)
+  // Пэд 39: Jump-Cut + Beat Repeat (сила нажатия / aftertouch задаёт длину лупа 0.3–1.0 сек)
   const pad39Velocity = heldPads[39] || 0;
   const beatRepeat = {
     active: pad39Velocity > 0,
@@ -102,7 +102,7 @@ export default function App() {
     targetChannel: heldChannel
   };
   const beatRepeatMs = pad39Velocity > 0
-    ? Math.round((0.12 + ((pad39Velocity - 1) / 126) * 0.53) * 1000)
+    ? Math.round((0.3 + ((pad39Velocity - 1) / 126) * 0.7) * 1000)
     : 0;
 
   // Визуальные значения прозрачности (0..1) для микшера и дебага
@@ -308,7 +308,6 @@ export default function App() {
 
     // ДЕЙСТВИЯ НАД КАНАЛОМ ПО МОДИФИКАТОРАМ (66 — наверх, 68 — режим наложения, 70 — инверсия маски)
     if (type === 'channelAction') {
-      // 66 + канал: поднять видеоканал на верхний план
       if (actionKey === 66 && channelIndex >= 0 && channelIndex < 4) {
         setZIndices(prev => {
           const maxZ = Math.max(...prev.slice(0, 4));
@@ -319,7 +318,6 @@ export default function App() {
         });
       }
 
-      // 68 + канал: перебор режимов наложения (нижний видимый канал — подложка, не меняется)
       if (actionKey === 68 && channelIndex >= 0 && channelIndex <= 4) {
         if (channelIndex < 4 && channelIndex === bottomVisibleChannelRef.current) {
           return;
@@ -333,7 +331,6 @@ export default function App() {
         }));
       }
 
-      // 70 + канал: инвертирование канальной маски
       if (actionKey === 70 && channelIndex >= 0 && channelIndex <= 4) {
         setInvertedMasks(prev => prev.map((inv, idx) => (idx === channelIndex ? !inv : inv)));
       }
@@ -372,7 +369,6 @@ export default function App() {
         return;
       }
 
-      // НИЖНИЙ РЯД ПЭДОВ (36-38): РАНДОМ ПО КАТЕГОРИЯМ (39 — Jump-Cut + Beat Repeat в VideoMixer)
       // ПЭД 36: РАНДОМ ГЕОМЕТРИИ И КАДРИРОВАНИЯ
       if (note === 36) {
         if (currentChannel !== null) {
@@ -525,102 +521,167 @@ export default function App() {
     setVideos(files.map(file => URL.createObjectURL(file)));
   };
 
-  return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '20px', letterSpacing: '2px' }}>LAB52</h1>
-      
-      <VideoMixer 
-        videos={videos} 
-        opacities={opacities}
-        volumes={volumes}
-        playbackRates={playbackRates}
-        zoomLevels={zoomLevels}
-        pixelLevels={pixelLevels}
-        thresholdLevels={thresholdLevels}
-        filterLevels={filterLevels}
-        delayLevels={delayLevels}
-        maskLevels={maskLevels}
-        invertedMasks={invertedMasks}
-        blendModes={blendModes}
-        masterMask={masterMask}
-        positions={positions}
-        zIndices={zIndices}
-        beatRepeat={beatRepeat}
-      />
+  const STAGE_WIDTH = 'min(92vw, calc(88vh * 4 / 3))';
 
-      <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
-        <div style={{ padding: '20px', background: '#f5f5f5', borderRadius: '8px', flex: 1 }}>
-          <h3>media</h3>
-          <input type="file" accept="video/*" multiple onChange={handleFileUpload} />
+  return (
+    <div style={{ fontFamily: 'inherit', width: '100%', margin: 0, padding: 0 }}>
+      {/* ПЕРВЫЙ ЭКРАН: ЧЁРНЫЙ ФОН НА ВСЮ ВИДИМУЮ ОБЛАСТЬ + ХОЛСТ 4:3 ПО ЦЕНТРУ */}
+      <section style={{
+        width: '100%',
+        height: '100vh',
+        backgroundColor: '#000000',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{
+          width: STAGE_WIDTH,
+          maxWidth: '100%',
+          aspectRatio: '4 / 3'
+        }}>
+          <VideoMixer 
+            videos={videos} 
+            opacities={opacities}
+            volumes={volumes}
+            playbackRates={playbackRates}
+            zoomLevels={zoomLevels}
+            pixelLevels={pixelLevels}
+            thresholdLevels={thresholdLevels}
+            filterLevels={filterLevels}
+            delayLevels={delayLevels}
+            maskLevels={maskLevels}
+            invertedMasks={invertedMasks}
+            blendModes={blendModes}
+            masterMask={masterMask}
+            positions={positions}
+            zIndices={zIndices}
+            beatRepeat={beatRepeat}
+          />
+        </div>
+      </section>
+
+      {/* НИЖНЯЯ СЕКЦИЯ ЗА ПРЕДЕЛАМИ ЭКРАНА: БЕЛЫЙ ФОН */}
+      <section style={{
+        width: '100%',
+        backgroundColor: '#ffffff',
+        color: '#000000',
+        padding: '24px 24px 64px',
+        boxSizing: 'border-box'
+      }}>
+        {/* 1. ЗАГРУЗКА ВИДЕО — ВЫРОВНЕНА ПО ПРАВОМУ КРАЮ ВИДЕО */}
+        <div style={{
+          width: STAGE_WIDTH,
+          maxWidth: '100%',
+          margin: '0 auto 48px',
+          display: 'flex',
+          justifyContent: 'flex-end'
+        }}>
+          <label style={{ cursor: 'pointer', color: '#000000', fontSize: '0.9rem', letterSpacing: '0.04em', userSelect: 'none', padding: 0 }}>
+            [ <span style={{ textDecoration: 'underline', textUnderlineOffset: '4px' }}>upload media</span> ]
+            <input type="file" accept="video/*" multiple onChange={handleFileUpload} style={{ display: 'none' }} />
+          </label>
         </div>
 
-        <div style={{ padding: '20px', background: '#222', color: '#0f0', borderRadius: '8px', fontFamily: 'monospace', flex: 1.5 }}>
-          <h3>inf (debug)</h3>
-          
-          <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
-            target mode: {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
-            {isSaveHeld ? ' | [SAVE 61 HELD]' : ''}
-            {heldActionKey !== null ? ` | [MOD ${heldActionKey} HELD]` : ''}
-            {beatRepeat.active ? ` | [LOOP 39: ${beatRepeatMs}ms]` : ''}
+        {/* 2. DEBUG PANEL — В САМОМ НИЗУ (СКРЫТЬ, КОГДА ВСЁ БУДЕТ ГОТОВО) */}
+        <div style={{
+          width: STAGE_WIDTH,
+          maxWidth: '100%',
+          margin: '0 auto',
+          padding: '20px 24px',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          border: '1px solid #000000',
+          fontFamily: 'monospace',
+          fontSize: '0.8rem',
+          lineHeight: '1.65',
+          textAlign: 'left',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            flexWrap: 'wrap',
+            gap: '8px',
+            borderBottom: '1px solid #000000',
+            paddingBottom: '10px',
+            marginBottom: '12px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em'
+          }}>
+            <span style={{ fontWeight: 'bold' }}>inf (debug)</span>
+            <span style={{ fontWeight: 'bold' }}>
+              {heldChannel !== null ? (heldChannel === 4 ? 'TRACK 5 (CREDITS)' : `TRACK ${heldChannel + 1} ONLY`) : 'MASTER ALL'}
+              {isSaveHeld ? ' / SAVE 61' : ''}
+              {heldActionKey !== null ? ` / MOD ${heldActionKey}` : ''}
+              {beatRepeat.active ? ` / LOOP 39: ${beatRepeatMs}ms` : ''}
+            </span>
+          </div>
+
+          <p style={{ margin: '0 0 10px 0' }}>
+            <strong>presets:</strong> {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
           </p>
-          <p style={{ color: '#ffeb3b' }}>
-            presets: {PRESET_SLOT_KEYS.map(k => `${k}:${presetSlots[k] ? (k === LOCKED_PRESET_KEY ? 'LOCK' : 'OK') : '--'}`).join(' | ')} ({presetStatus})
-          </p>
-          <hr style={{ borderColor: '#444' }}/>
-          <p style={{ color: '#4caf50' }}>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
+          <p style={{ margin: '2px 0' }}>
             opacity (73 / pads): {opacities.map((op, i) => `T${i + 1}: ${Math.round(op * 100)}%`).join(' | ')}
           </p>
-          <p style={{ color: '#ff5722' }}>
+          <p style={{ margin: '2px 0' }}>
             volume (77): {volumes.map((v, i) => `T${i + 1}: ${Math.round(v * 100)}%`).join(' | ')}
           </p>
-          <p style={{ color: '#03a9f4' }}>
+          <p style={{ margin: '2px 0' }}>
             speed (70): {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
           </p>
-          <p style={{ color: '#e91e63' }}>
+          <p style={{ margin: '2px 0' }}>
             zoom (74): {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
           </p>
-          <p style={{ color: '#ffeb3b' }}>
+          <p style={{ margin: '2px 0' }}>
             pos (xy): {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}
           </p>
-          <p style={{ color: '#fff' }}>
+          <p style={{ margin: '2px 0' }}>
             z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
-          <p style={{ color: '#80deea' }}>
+          <p style={{ margin: '2px 0' }}>
             blend (68): {blendModes.map((b, i) => {
               if (i < 4 && i === bottomVisibleChannel) return `T${i + 1}: BASE`;
               const name = b < 0 ? 'normal' : (BLEND_MODES[b] || 'screen');
               return `T${i + 1}: ${name}`;
             }).join(' | ')}
           </p>
-          <p style={{ color: '#00e676' }}>
+          <p style={{ margin: '2px 0' }}>
             ch mask (70 inv): {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : `M-${m}${invertedMasks[i] ? '(inv)' : ''}`}`).join(' | ')}
           </p>
-          <p style={{ color: '#ff00ff', fontWeight: 'bold' }}>
+          <p style={{ margin: '2px 0', fontWeight: 'bold' }}>
             master preset: {masterMask === 0 ? 'OFF (Free Mix)' : `SPLIT-${masterMask}`}
           </p>
-          
-          <hr style={{ borderColor: '#444' }}/>
-          <p style={{ color: '#9c27b0' }}>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
+          <p style={{ margin: '2px 0' }}>
             pixel (71): {pixelLevels.map((p, i) => `T${i + 1}: ${Math.round(p)}`).join(' | ')}
           </p>
-          <p style={{ color: '#00bcd4' }}>
+          <p style={{ margin: '2px 0' }}>
             thresh (75): {thresholdLevels.map((t, i) => `T${i + 1}: ${Math.round(t)}`).join(' | ')}
           </p>
-          <p style={{ color: '#ff5722' }}>
+          <p style={{ margin: '2px 0' }}>
             filter (72): {filterLevels.map((f, i) => `T${i + 1}: fx-${Math.round(f)}`).join(' | ')}
           </p>
-          <p style={{ color: '#8bc34a' }}>
+          <p style={{ margin: '2px 0' }}>
             delay (76): {delayLevels.map((d, i) => `T${i + 1}: ${Math.round(d)}`).join(' | ')}
           </p>
 
-          <hr style={{ borderColor: '#444' }}/>
+          <hr style={{ border: 'none', borderTop: '1px solid #d9d9d9', margin: '10px 0' }} />
+
           {midiLog ? (
-            <p style={{ color: '#ccc' }}>MIDI IN: Cmd {midiLog.command} | Note {midiLog.note} | Vel {midiLog.velocity}</p>
+            <p style={{ margin: 0 }}>MIDI IN: Cmd {midiLog.command} | Note {midiLog.note} | Vel {midiLog.velocity}</p>
           ) : (
-            <p style={{ color: '#777' }}>waiting MIDI...</p>
+            <p style={{ margin: 0, color: '#777777' }}>waiting MIDI...</p>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
