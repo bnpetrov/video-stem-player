@@ -1,5 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react';
 
+// 8 режимов наложения с чередованием: светлый/графический <-> тёмный/контрастный
+export const BLEND_MODES = [
+  'screen',      // 0: светлый (безопасный на ч/б)
+  'multiply',    // 1: тёмный
+  'lighten',     // 2: светлый (безопасный на ч/б)
+  'darken',      // 3: тёмный
+  'difference',  // 4: инверсная графика (безопасный на ч/б)
+  'hard-light',  // 5: жёсткий контраст
+  'exclusion',   // 6: мягкая инверсия (безопасный на ч/б)
+  'overlay'      // 7: контраст
+];
+
 const MOVIE_TITLES = [
   "1. THE NEON HORIZON",
   "2. MIDNIGHT PROTOCOL",
@@ -61,6 +73,22 @@ const clipMasks = [
   'polygon(42% 10%, 58% 10%, 58% 36%, 73% 36%, 73% 64%, 58% 64%, 58% 90%, 42% 90%, 42% 64%, 27% 64%, 27% 36%, 42% 36%)' // 8 (60): Швейцарский крест
 ];
 
+// ИНВЕРТИРОВАННЫЕ ВЕРСИИ КАНАЛЬНЫХ МАСОК (Клавиша 70 + канал)
+// Для круга (M-1) используется radial-gradient maskImage, чтобы сохранить ровную окружность 24vh
+const invertedClipMasks = [
+  'none',                                                                                                                                                                    // 0: Выкл
+  'none',                                                                                                                                                                    // 1: Обрабатывается через radial-gradient
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 33% 12%, 67% 12%, 67% 88%, 33% 88%, 33% 12%)',                                                                // 2: Вырезанный квадрат
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 8%, 76% 50%, 50% 92%, 24% 50%, 50% 8%)',                                                                  // 3: Вырезанный ромб
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 8% 28%, 92% 28%, 92% 72%, 8% 72%, 8% 28%)',                                                                   // 4: Вырезанное каше
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 36% 8%, 64% 8%, 64% 92%, 36% 92%, 36% 8%)',                                                                   // 5: Вырезанный монолит
+  'inset(33% 0% 33% 0%)',                                                                                                                                                    // 6: Центральная полоса вместо краёв
+  'inset(18% 18% 18% 18%)',                                                                                                                                                  // 7: Внутреннее окно вместо рамки
+  'polygon(evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 42% 10%, 58% 10%, 58% 36%, 73% 36%, 73% 64%, 58% 64%, 58% 90%, 42% 90%, 42% 64%, 27% 64%, 27% 36%, 42% 36%, 42% 10%)' // 8: Вырезанный крест
+];
+
+const INVERTED_CIRCLE_MASK_IMAGE = 'radial-gradient(circle at 50% 50%, transparent 24vh, black calc(24vh + 0.5px))';
+
 // SPLIT-3: 8 ИДЕАЛЬНО РОВНЫХ ВЕРТИКАЛЬНЫХ ПОЛОС (Без косых срезов)
 const slicer8Combo = [
   'polygon(0% 0%, 0% 100%, 12.5% 100%, 12.5% 0%, 37.5% 0%, 37.5% 100%, 62.5% 100%, 62.5% 0%, 75% 0%, 75% 100%, 87.5% 100%, 87.5% 0%)',
@@ -88,6 +116,8 @@ export default function VideoMixer({
   filterLevels,
   delayLevels,
   maskLevels,
+  invertedMasks = [false, false, false, false, false],
+  blendModes = [0, 0, 2, 6, -1],
   masterMask,
   positions,
   zIndices,
@@ -109,8 +139,6 @@ export default function VideoMixer({
   const [flashLevel, setFlashLevel] = useState(0);
   const flashValRef = useRef(0);
   const flashRafRef = useRef(null);
-
-  const upperLayerBlends = ['screen', 'lighten', 'exclusion', 'screen'];
 
   useEffect(() => {
     delayLevelsRef.current = delayLevels;
@@ -290,27 +318,38 @@ export default function VideoMixer({
     return currentIdx === lowerIdx ? 'normal' : upperBlend;
   };
 
-  // ВЫЧИСЛЕНИЕ МАСКИ (ОТДЕЛЬНО ДЛЯ МАСТЕРА И КАНАЛА) И РЕЖИМА НАЛОЖЕНИЯ
+  // ВЫЧИСЛЕНИЕ МАСКИ (С УЧЁТОМ ИНВЕРСИИ) И РЕЖИМА НАЛОЖЕНИЯ (С УЧЁТОМ КЛАВИШИ 68)
   const getMaskAndBlend = (index) => {
     const individualMaskIdx = maskLevels && maskLevels[index] !== undefined ? maskLevels[index] : 0;
-    const individualMask = clipMasks[individualMaskIdx] || 'none';
+    const isInverted = Boolean(invertedMasks && invertedMasks[index]);
+
+    const useCircleInvertMask = isInverted && individualMaskIdx === 1;
+    const channelClip = useCircleInvertMask
+      ? 'none'
+      : (isInverted ? (invertedClipMasks[individualMaskIdx] || 'none') : (clipMasks[individualMaskIdx] || 'none'));
+    const channelMaskImage = useCircleInvertMask ? INVERTED_CIRCLE_MASK_IMAGE : 'none';
+
+    const modeIdx = blendModes && blendModes[index] !== undefined ? blendModes[index] : 0;
+    const userBlend = modeIdx < 0 ? 'normal' : (BLEND_MODES[modeIdx % BLEND_MODES.length] || 'screen');
 
     if (index === 4) {
       return {
         masterClip: 'none',
-        channelClip: individualMask,
-        blend: 'normal'
+        channelClip,
+        channelMaskImage,
+        blend: userBlend
       };
     }
 
     const dynamicFreeBlend = (visibleVideoIndices.length <= 1 || index === bottomVisibleChannel)
       ? 'normal'
-      : upperLayerBlends[index % upperLayerBlends.length];
+      : userBlend;
 
     if (!masterMask || masterMask === 0) {
       return {
         masterClip: 'none',
-        channelClip: individualMask,
+        channelClip,
+        channelMaskImage,
         blend: dynamicFreeBlend
       };
     }
@@ -318,32 +357,36 @@ export default function VideoMixer({
     if (masterMask === 1) {
       return {
         masterClip: index < 2 ? 'inset(0% 0% 50% 0%)' : 'inset(50% 0% 0% 0%)',
-        channelClip: individualMask,
-        blend: index < 2 ? getPairBlend(0, 1, index, 'screen') : getPairBlend(2, 3, index, 'screen')
+        channelClip,
+        channelMaskImage,
+        blend: index < 2 ? getPairBlend(0, 1, index, userBlend) : getPairBlend(2, 3, index, userBlend)
       };
     }
 
     if (masterMask === 2) {
       return {
         masterClip: index < 2 ? 'inset(0% 50% 0% 0%)' : 'inset(0% 0% 0% 50%)',
-        channelClip: individualMask,
-        blend: index < 2 ? getPairBlend(0, 1, index, 'screen') : getPairBlend(2, 3, index, 'screen')
+        channelClip,
+        channelMaskImage,
+        blend: index < 2 ? getPairBlend(0, 1, index, userBlend) : getPairBlend(2, 3, index, userBlend)
       };
     }
 
     if (masterMask === 3) {
       return {
         masterClip: slicer8Combo[index],
-        channelClip: individualMask,
-        blend: index === bottomVisibleChannel ? 'normal' : 'screen'
+        channelClip,
+        channelMaskImage,
+        blend: index === bottomVisibleChannel ? 'normal' : userBlend
       };
     }
 
     if (masterMask === 4) {
       return {
         masterClip: wideOverlapColumns[index],
-        channelClip: individualMask,
-        blend: index === bottomVisibleChannel ? 'normal' : 'lighten'
+        channelClip,
+        channelMaskImage,
+        blend: index === bottomVisibleChannel ? 'normal' : userBlend
       };
     }
 
@@ -354,21 +397,23 @@ export default function VideoMixer({
         'inset(50% 50% 0% 0%)',
         'inset(50% 0% 0% 50%)'
       ];
-      return { masterClip: grid2x2[index], channelClip: individualMask, blend: 'normal' };
+      return { masterClip: grid2x2[index], channelClip, channelMaskImage, blend: 'normal' };
     }
 
     if (masterMask === 6) {
       if (index < 2) {
         return {
           masterClip: 'circle(24vh at 50% 50%)',
-          channelClip: individualMask,
-          blend: getPairBlend(0, 1, index, 'screen')
+          channelClip,
+          channelMaskImage,
+          blend: getPairBlend(0, 1, index, userBlend)
         };
       }
       return {
         masterClip: 'inset(0% 0% 0% 0%)',
-        channelClip: individualMask,
-        blend: getPairBlend(2, 3, index, 'lighten')
+        channelClip,
+        channelMaskImage,
+        blend: getPairBlend(2, 3, index, userBlend)
       };
     }
 
@@ -379,22 +424,23 @@ export default function VideoMixer({
         'inset(50% 0% 25% 0%)',
         'inset(75% 0% 0% 0%)'
       ];
-      return { masterClip: horizontalStrips[index], channelClip: individualMask, blend: 'normal' };
+      return { masterClip: horizontalStrips[index], channelClip, channelMaskImage, blend: 'normal' };
     }
 
     if (masterMask === 8) {
       if (index < 2) {
         return {
           masterClip: 'inset(0% 25% 0% 25%)',
-          channelClip: individualMask,
-          blend: getPairBlend(0, 1, index, 'screen')
+          channelClip,
+          channelMaskImage,
+          blend: getPairBlend(0, 1, index, userBlend)
         };
       }
-      if (index === 2) return { masterClip: 'inset(0% 75% 0% 0%)', channelClip: individualMask, blend: 'normal' };
-      return { masterClip: 'inset(0% 0% 0% 75%)', channelClip: individualMask, blend: 'normal' };
+      if (index === 2) return { masterClip: 'inset(0% 75% 0% 0%)', channelClip, channelMaskImage, blend: 'normal' };
+      return { masterClip: 'inset(0% 0% 0% 75%)', channelClip, channelMaskImage, blend: 'normal' };
     }
 
-    return { masterClip: 'none', channelClip: individualMask, blend: dynamicFreeBlend };
+    return { masterClip: 'none', channelClip, channelMaskImage, blend: dynamicFreeBlend };
   };
 
   const renderCreditsList = (ref) => (
@@ -480,7 +526,7 @@ export default function VideoMixer({
           const isActive = opacity > 0.01;
           const activeFlash = isActive ? flashLevel : 0;
 
-          const { masterClip, channelClip, blend: rawBlendMode } = getMaskAndBlend(index);
+          const { masterClip, channelClip, channelMaskImage, blend: rawBlendMode } = getMaskAndBlend(index);
           const currentBlendMode = opacity >= 0.999 ? 'normal' : rawBlendMode;
 
           const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
@@ -533,6 +579,8 @@ export default function VideoMixer({
             translate: `${currentPos.x}% ${currentPos.y}%`,
             scale: currentZoom,
             clipPath: channelClip,
+            maskImage: channelMaskImage,
+            WebkitMaskImage: channelMaskImage,
             filter: filterStyle,
             imageRendering: isPixelated ? 'pixelated' : 'auto',
             transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
@@ -599,7 +647,7 @@ export default function VideoMixer({
         const opacity = opacities[index] !== undefined ? opacities[index] : 0;
         const isActive = opacity > 0.01;
         const activeFlash = isActive ? flashLevel : 0;
-        const { channelClip } = getMaskAndBlend(index);
+        const { channelClip, channelMaskImage, blend: creditsBlendMode } = getMaskAndBlend(index);
 
         const baseZoom = zoomLevels[index] !== undefined ? zoomLevels[index] : 1;
         const currentZoom = baseZoom * (1 + activeFlash * 0.1);
@@ -632,6 +680,8 @@ export default function VideoMixer({
           translate: `${currentPos.x}% ${currentPos.y}%`,
           scale: currentZoom,
           clipPath: channelClip,
+          maskImage: channelMaskImage,
+          WebkitMaskImage: channelMaskImage,
           filter: filterStyle,
           imageRendering: isPixelated ? 'pixelated' : 'auto',
           transition: activeFlash > 0.01 ? 'clip-path 0.2s ease-out' : 'scale 0.08s linear, clip-path 0.2s ease-out',
@@ -650,6 +700,7 @@ export default function VideoMixer({
             inset: 0,
             zIndex: 10,
             opacity,
+            mixBlendMode: creditsBlendMode,
             transition: 'opacity 0.1s ease-out',
             pointerEvents: 'none',
             overflow: 'hidden'

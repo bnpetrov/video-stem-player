@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useMidi } from './useMidi';
-import VideoMixer from './VideoMixer';
+import VideoMixer, { BLEND_MODES } from './VideoMixer';
 
 const OPACITY_STEP = 0.025;
 const MAX_MASTER_OPACITY = 1.0 - OPACITY_STEP; // 0.975 (на шаг ниже 100%)
@@ -23,6 +23,8 @@ const INITIAL_STATE = {
   filterLevels: [0, 0, 0, 0, 0],
   delayLevels: [0, 0, 0, 0, 0],
   maskLevels: [0, 0, 0, 0, 0],
+  invertedMasks: [false, false, false, false, false],
+  blendModes: [0, 0, 2, 6, -1], // -1 для титров = normal, 0..7 = индексы BLEND_MODES
   masterMask: 0,
   positions: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
   zIndices: [0, 1, 2, 3, 4],
@@ -40,6 +42,8 @@ const HARDCODED_PRESET_72 = {
   filterLevels: [3, 6, 1, 0, 0],
   delayLevels: [35, 0, 50, 0, 20],
   maskLevels: [0, 1, 0, 0, 0],
+  invertedMasks: [false, false, false, false, false],
+  blendModes: [0, 0, 2, 6, -1],
   masterMask: 3,
   positions: [{ x: 0, y: 0 }, { x: -8, y: 5 }, { x: 10, y: -5 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
   zIndices: [10, 11, 12, 9, 20],
@@ -56,6 +60,8 @@ const cloneSnapshot = (s) => ({
   filterLevels: [...s.filterLevels],
   delayLevels: [...s.delayLevels],
   maskLevels: [...s.maskLevels],
+  invertedMasks: s.invertedMasks ? [...s.invertedMasks] : [false, false, false, false, false],
+  blendModes: s.blendModes ? [...s.blendModes] : [0, 0, 2, 6, -1],
   masterMask: s.masterMask,
   positions: s.positions.map(p => ({ x: p.x, y: p.y })),
   zIndices: [...s.zIndices],
@@ -76,6 +82,8 @@ export default function App() {
   const [filterLevels, setFilterLevels] = useState(INITIAL_STATE.filterLevels); 
   const [delayLevels, setDelayLevels] = useState(INITIAL_STATE.delayLevels); 
   const [maskLevels, setMaskLevels] = useState(INITIAL_STATE.maskLevels); 
+  const [invertedMasks, setInvertedMasks] = useState(INITIAL_STATE.invertedMasks);
+  const [blendModes, setBlendModes] = useState(INITIAL_STATE.blendModes);
   const [masterMask, setMasterMask] = useState(INITIAL_STATE.masterMask);
   const [positions, setPositions] = useState(INITIAL_STATE.positions.map(p => ({ ...p }))); 
   const [zIndices, setZIndices] = useState(INITIAL_STATE.zIndices); 
@@ -92,8 +100,21 @@ export default function App() {
   // Визуальные значения прозрачности (0..1) для микшера и дебага
   const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
 
+  // Определяем нижний видимый видеоканал (подложка — её режим наложения менять нельзя)
+  const visibleVideoIndices = [0, 1, 2, 3].filter(i => videos[i] && (opacities[i] || 0) > 0.01);
+  let bottomVisibleChannel = null;
+  if (visibleVideoIndices.length > 0) {
+    bottomVisibleChannel = visibleVideoIndices.reduce((lowestIdx, currIdx) => {
+      const zLow = zIndices[lowestIdx] !== undefined ? zIndices[lowestIdx] : lowestIdx;
+      const zCurr = zIndices[currIdx] !== undefined ? zIndices[currIdx] : currIdx;
+      return zCurr < zLow ? currIdx : lowestIdx;
+    }, visibleVideoIndices[0]);
+  }
+
   const activeChannelRef = useRef(null);
   const videosCountRef = useRef(0);
+  const bottomVisibleChannelRef = useRef(null);
+  bottomVisibleChannelRef.current = bottomVisibleChannel;
   
   const stickRef = useRef({ x: 0, y: 0 });
   const positionsRef = useRef(INITIAL_STATE.positions.map(p => ({ ...p })));
@@ -110,6 +131,8 @@ export default function App() {
     filterLevels,
     delayLevels,
     maskLevels,
+    invertedMasks,
+    blendModes,
     masterMask,
     positions,
     zIndices,
@@ -130,6 +153,8 @@ export default function App() {
     setFilterLevels(copy.filterLevels);
     setDelayLevels(copy.delayLevels);
     setMaskLevels(copy.maskLevels);
+    setInvertedMasks(copy.invertedMasks);
+    setBlendModes(copy.blendModes);
     setMasterMask(copy.masterMask);
     positionsRef.current = copy.positions.map(p => ({ ...p }));
     setPositions(copy.positions);
@@ -273,8 +298,9 @@ export default function App() {
     if (!noteOnEvent) return;
     const { note, velocity, type, isSaveHeld: saveMode, actionKey, channelIndex } = noteOnEvent;
 
-    // ДЕЙСТВИЯ НАД КАНАЛОМ ПО МОДИФИКАТОРАМ (66 — вытащить наверх; 68, 70 — зарезервированы)
+    // ДЕЙСТВИЯ НАД КАНАЛОМ ПО МОДИФИКАТОРАМ (66 — наверх, 68 — режим наложения, 70 — инверсия маски)
     if (type === 'channelAction') {
+      // 66 + канал: поднять видеоканал на верхний план
       if (actionKey === 66 && channelIndex >= 0 && channelIndex < 4) {
         setZIndices(prev => {
           const maxZ = Math.max(...prev.slice(0, 4));
@@ -284,7 +310,26 @@ export default function App() {
           });
         });
       }
-      // actionKey === 68 и actionKey === 70 — зарезервированы для будущих манипуляций с каналами
+
+      // 68 + канал: перебор режимов наложения (нижний видимый канал — подложка, не меняется)
+      if (actionKey === 68 && channelIndex >= 0 && channelIndex <= 4) {
+        if (channelIndex < 4 && channelIndex === bottomVisibleChannelRef.current) {
+          return;
+        }
+        setBlendModes(prev => prev.map((modeIdx, idx) => {
+          if (idx !== channelIndex) return modeIdx;
+          if (idx === 4) {
+            // Для титров: normal (-1) -> 0..7 -> normal (-1)
+            return modeIdx >= BLEND_MODES.length - 1 ? -1 : modeIdx + 1;
+          }
+          return (modeIdx + 1) % BLEND_MODES.length;
+        }));
+      }
+
+      // 70 + канал: инвертирование канальной маски
+      if (actionKey === 70 && channelIndex >= 0 && channelIndex <= 4) {
+        setInvertedMasks(prev => prev.map((inv, idx) => (idx === channelIndex ? !inv : inv)));
+      }
       return;
     }
 
@@ -495,6 +540,8 @@ export default function App() {
         filterLevels={filterLevels}
         delayLevels={delayLevels}
         maskLevels={maskLevels}
+        invertedMasks={invertedMasks}
+        blendModes={blendModes}
         masterMask={masterMask}
         positions={positions}
         zIndices={zIndices}
@@ -537,8 +584,15 @@ export default function App() {
           <p style={{ color: '#fff' }}>
             z-order: {zIndices.map((z, i) => `T${i + 1}: ${z}`).join(' | ')}
           </p>
+          <p style={{ color: '#80deea' }}>
+            blend (68): {blendModes.map((b, i) => {
+              if (i < 4 && i === bottomVisibleChannel) return `T${i + 1}: BASE`;
+              const name = b < 0 ? 'normal' : (BLEND_MODES[b] || 'screen');
+              return `T${i + 1}: ${name}`;
+            }).join(' | ')}
+          </p>
           <p style={{ color: '#00e676' }}>
-            ch mask: {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : 'M-' + m}`).join(' | ')}
+            ch mask (70 inv): {maskLevels.map((m, i) => `T${i + 1}: ${m === 0 ? 'off' : `M-${m}${invertedMasks[i] ? '(inv)' : ''}`}`).join(' | ')}
           </p>
           <p style={{ color: '#ff00ff', fontWeight: 'bold' }}>
             master preset: {masterMask === 0 ? 'OFF (Free Mix)' : `SPLIT-${masterMask}`}
