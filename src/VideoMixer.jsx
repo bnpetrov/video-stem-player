@@ -48,17 +48,17 @@ const cssFilters = [
   'sepia(1) hue-rotate(65deg) saturate(3.5) contrast(1.35)'                    // 10: Festival Acid Lime
 ];
 
-// ИНДИВИДУАЛЬНЫЕ МАСКИ КАНАЛОВ (Двигаются и зумируются вместе с видео!)
+// ИНДИВИДУАЛЬНЫЕ МАСКИ КАНАЛОВ (8 штук, двигаются и зумируются вместе с видео)
 const clipMasks = [
   'none',                                                                                                    // 0: Выкл
-  'circle(24vh at 50% 50%)',                                                                                 // 1: Идеальный круг в центре
-  'inset(12% 33% 12% 33%)',                                                                                  // 2: Ровный квадрат в центре
-  'polygon(50% 8%, 76% 50%, 50% 92%, 24% 50%)',                                                              // 3: Строгий ромб
-  'inset(28% 8% 28% 8%)',                                                                                    // 4: Широкоэкранное каше (Cinemascope)
-  'inset(8% 36% 8% 36%)',                                                                                    // 5: Вертикальный монолит
-  'polygon(15% 10%, 85% 10%, 50% 90%)',                                                                      // 6: Треугольная призма
-  'polygon(0% 0%, 0% 100%, 18% 100%, 18% 18%, 82% 18%, 82% 82%, 18% 82%, 18% 100%, 100% 100%, 100% 0%)',     // 7: Прямоугольная рамка с окном
-  'polygon(18% 8%, 82% 8%, 56% 50%, 82% 92%, 18% 92%, 44% 50%)'                                              // 8: Двойная призма (Песочные часы)
+  'circle(24vh at 50% 50%)',                                                                                 // 1 (48): Идеальный круг в центре
+  'inset(12% 33% 12% 33%)',                                                                                  // 2 (50): Ровный квадрат в центре
+  'polygon(50% 8%, 76% 50%, 50% 92%, 24% 50%)',                                                              // 3 (52): Строгий ромб
+  'inset(28% 8% 28% 8%)',                                                                                    // 4 (53): Широкоэкранное каше (Cinemascope)
+  'inset(8% 36% 8% 36%)',                                                                                    // 5 (55): Вертикальный монолит
+  'polygon(0% 0%, 100% 0%, 100% 33%, 0% 33%, 0% 67%, 100% 67%, 100% 100%, 0% 100%)',                         // 6 (57): Негативное пространство (верх и низ видео, центр пустой)
+  'polygon(0% 0%, 0% 100%, 18% 100%, 18% 18%, 82% 18%, 82% 82%, 18% 82%, 18% 100%, 100% 100%, 100% 0%)',     // 7 (59): Прямоугольная рамка с окном
+  'polygon(42% 10%, 58% 10%, 58% 36%, 73% 36%, 73% 64%, 58% 64%, 58% 90%, 42% 90%, 42% 64%, 27% 64%, 27% 36%, 42% 36%)' // 8 (60): Швейцарский крест
 ];
 
 // SPLIT-3: 8 ИДЕАЛЬНО РОВНЫХ ВЕРТИКАЛЬНЫХ ПОЛОС (Без косых срезов)
@@ -262,7 +262,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
-    // Когда включен мастер-пресет, сетка фиксируется на внешнем контейнере, а индивидуальная маска продолжает двигаться внутри!
+    // 1. Горизонтальный диптих (верх A+B, низ C+D)
     if (masterMask === 1) {
       return {
         masterClip: index < 2 ? 'inset(0% 0% 50% 0%)' : 'inset(50% 0% 0% 0%)',
@@ -271,6 +271,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
+    // 2. Вертикальный диптих (лево A+B, право C+D)
     if (masterMask === 2) {
       return {
         masterClip: index < 2 ? 'inset(0% 50% 0% 0%)' : 'inset(0% 0% 0% 50%)',
@@ -279,6 +280,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
+    // 3. 8 вертикальных полос с комбинациями наложений
     if (masterMask === 3) {
       return {
         masterClip: slicer8Combo[index],
@@ -287,6 +289,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
+    // 4. Панорамные колонны с мягким перехлестом
     if (masterMask === 4) {
       return {
         masterClip: wideOverlapColumns[index],
@@ -295,6 +298,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
+    // 5. Сетка 2x2
     if (masterMask === 5) {
       const grid2x2 = [
         'inset(0% 50% 50% 0%)',
@@ -305,6 +309,7 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       return { masterClip: grid2x2[index], channelClip: individualMask, blend: 'normal' };
     }
 
+    // 6. Круг в центре (A+B) поверх фона (C+D)
     if (masterMask === 6) {
       if (index < 2) {
         return {
@@ -320,16 +325,18 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       };
     }
 
+    // 7. 4 ровные горизонтальные кино-полосы (замена треугольников)
     if (masterMask === 7) {
-      const xTriangles = [
-        'polygon(0% 0%, 100% 0%, 50% 50%)',
-        'polygon(100% 0%, 100% 100%, 50% 50%)',
-        'polygon(0% 100%, 100% 100%, 50% 50%)',
-        'polygon(0% 0%, 0% 100%, 50% 50%)'
+      const horizontalStrips = [
+        'inset(0% 0% 75% 0%)',   // Верхняя линия (Канал 1)
+        'inset(25% 0% 50% 0%)',  // Вторая линия (Канал 2)
+        'inset(50% 0% 25% 0%)',  // Третья линия (Канал 3)
+        'inset(75% 0% 0% 0%)'    // Нижняя линия (Канал 4)
       ];
-      return { masterClip: xTriangles[index], channelClip: individualMask, blend: 'normal' };
+      return { masterClip: horizontalStrips[index], channelClip: individualMask, blend: 'normal' };
     }
 
+    // 8. Триптих (центр A+B, лево C, право D)
     if (masterMask === 8) {
       if (index < 2) {
         return {
@@ -381,11 +388,9 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           {[0, 1, 2, 3, 4].map((index) => {
-            // 1. БЕЗ МОРГАНИЯ: Стабильные координаты feFlood (x=4 y=4) + плавный радиус без пересчета сетки тайлов
             const rawPixel = pixelLevels && pixelLevels[index] ? pixelLevels[index] : 0;
             const pixelSize = rawPixel > 0 ? 2 + Math.pow(rawPixel / 100, 1.35) * 62 : 2;
 
-            // 3. ПОЛНЫЙ ДИАПАЗОН THRESHOLD: Сохраняем мягкий шаг, но позволяем увести от чистого белого до полного черного (0.0 .. 1.05)
             const thresh = thresholdLevels && thresholdLevels[index] ? thresholdLevels[index] : 0;
             const cutoff = (thresh / 100) * 1.05; 
             const slope = 25 + (thresh / 100) * 80;
@@ -453,7 +458,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
             ? (index < 2 ? 20 + (currentZIndex % 10) : currentZIndex % 10)
             : currentZIndex;
 
-        // Внешний слой держит ТОЛЬКО мастер-сплит (если он включен) и режим наложения
         const masterSlotStyle = {
           position: 'absolute',
           top: 0,
@@ -468,7 +472,6 @@ export default function VideoMixer({ videos, opacities, volumes, playbackRates, 
           overflow: 'hidden'
         };
 
-        // 2. Внутренний слой держит ИНДИВИДУАЛЬНУЮ МАСКУ КАНАЛА + ЗУМ + ДЖОЙСТИК (маска двигается вместе с видео!)
         const mediaTransformStyle = {
           position: 'absolute',
           top: 0,
