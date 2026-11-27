@@ -4,6 +4,12 @@ import VideoMixer, { BLEND_MODES } from './VideoMixer';
 
 const SHOW_DEBUG = false; // true — показать панель дебага, false — скрыть
 
+// ПЕРФОРМАНС-МОДУЛЯЦИЯ ДЖОЙСТИКОМ (когда не выбран канал; возвращается при отпускании)
+const STICK_ZOOM_IN_BOOST = 0.9;      // вверх: до +90% к текущему зуму (макс 4.0x)
+const STICK_ZOOM_OUT_PULL = 0.5;      // вниз: до -50% от текущего зума (мин 0.35x)
+const STICK_SPEED_BOOST = 1.25;       // вправо: до +125% к скорости (макс 3.0x видео)
+const STICK_FREEZE_THRESHOLD = -0.92; // крайнее левое положение: стоп-кадр (0x)
+
 const OPACITY_STEP = 0.025;
 const MAX_MASTER_OPACITY = 1.0 - OPACITY_STEP; // 0.975 (на шаг ниже 100%)
 const round4 = (n) => Math.round(n * 10000) / 10000;
@@ -96,6 +102,9 @@ export default function VideoStemPlayer() {
   const [positions, setPositions] = useState(INITIAL_STATE.positions.map(p => ({ ...p }))); 
   const [zIndices, setZIndices] = useState(INITIAL_STATE.zIndices); 
 
+  // Отклонение джойстика в мастер-режиме (X = скорость, Y = зум)
+  const [masterStick, setMasterStick] = useState({ x: 0, y: 0 });
+
   // Слоты пресетов (62, 64, 65, 67, 69, 71 — пользовательские; 72 — захардкоженный)
   const [presetSlots, setPresetSlots] = useState({
     [LOCKED_PRESET_KEY]: cloneSnapshot(HARDCODED_PRESET_72)
@@ -115,6 +124,27 @@ export default function VideoStemPlayer() {
 
   // Визуальные значения прозрачности (0..1) для микшера и дебага
   const opacities = rawOpacities.map(v => (v === null ? 0 : Math.max(0, Math.min(1, v))));
+
+  // Итоговые зум и скорость с учётом перформанс-отклонения джойстика (базовые значения пресета не меняются)
+  const effectiveZoomLevels = masterStick.y === 0
+    ? zoomLevels
+    : zoomLevels.map((z) => {
+        const mult = masterStick.y > 0
+          ? 1 + masterStick.y * STICK_ZOOM_IN_BOOST
+          : 1 + masterStick.y * STICK_ZOOM_OUT_PULL;
+        return round4(Math.max(0.35, Math.min(4.0, z * mult)));
+      });
+
+  const effectivePlaybackRates = masterStick.x === 0
+    ? playbackRates
+    : playbackRates.map((r) => {
+        if (r <= 0.05) return r; // уже поставленный на паузу канал не сдвигаем
+        if (masterStick.x <= STICK_FREEZE_THRESHOLD) return 0; // стоп-кадр в крайнем левом положении
+        const mult = masterStick.x > 0
+          ? 1 + masterStick.x * STICK_SPEED_BOOST
+          : 1 + masterStick.x * 0.9;
+        return round4(Math.max(0.1, Math.min(3.0, r * mult)));
+      });
 
   // Определяем нижний видимый видеоканал (подложка — её режим наложения менять нельзя)
   const visibleVideoIndices = [0, 1, 2, 3].filter(i => videos[i] && (opacities[i] || 0) > 0.01);
@@ -180,20 +210,29 @@ export default function VideoStemPlayer() {
 
   useEffect(() => {
     activeChannelRef.current = heldChannel;
+    // При переключении на конкретный канал сбрасываем мастер-модуляцию джойстика
+    if (heldChannel !== null) {
+      setMasterStick({ x: 0, y: 0 });
+    }
   }, [heldChannel]);
 
   useEffect(() => {
     videosCountRef.current = videos.length;
   }, [videos]);
 
-  // ОБРАБОТКА ДЖОЙСТИКА
+  // ОБРАБОТКА ДЖОЙСТИКА (с каналом — позиция X/Y, без канала — мастер-скорость X и мастер-зум Y)
   useEffect(() => {
     if (!stickEvent) return;
     const { axis, value } = stickEvent;
-    stickRef.current[axis] = Math.abs(value) > 0.05 ? value : 0;
+    const cleanVal = Math.abs(value) > 0.05 ? value : 0;
+    stickRef.current[axis] = cleanVal;
+
+    if (activeChannelRef.current === null) {
+      setMasterStick(prev => (prev[axis] === cleanVal ? prev : { ...prev, [axis]: cleanVal }));
+    }
   }, [stickEvent]);
 
-  // АНИМАЦИОННЫЙ ЦИКЛ ПЕРЕМЕЩЕНИЯ (60 FPS)
+  // АНИМАЦИОННЫЙ ЦИКЛ ПЕРЕМЕЩЕНИЯ КАНАЛА (60 FPS)
   useEffect(() => {
     let reqId;
     const loop = () => {
@@ -557,8 +596,8 @@ export default function VideoStemPlayer() {
             videos={videos} 
             opacities={opacities}
             volumes={volumes}
-            playbackRates={playbackRates}
-            zoomLevels={zoomLevels}
+            playbackRates={effectivePlaybackRates}
+            zoomLevels={effectiveZoomLevels}
             pixelLevels={pixelLevels}
             thresholdLevels={thresholdLevels}
             filterLevels={filterLevels}
@@ -649,6 +688,7 @@ export default function VideoStemPlayer() {
                 {isSaveHeld ? ' / SAVE 61' : ''}
                 {heldActionKey !== null ? ` / MOD ${heldActionKey}` : ''}
                 {beatRepeat.active ? ` / LOOP 39: ${beatRepeatMs}ms` : ''}
+                {(masterStick.x !== 0 || masterStick.y !== 0) ? ` / STICK [${masterStick.x.toFixed(2)}, ${masterStick.y.toFixed(2)}]` : ''}
               </span>
             </div>
 
@@ -665,10 +705,10 @@ export default function VideoStemPlayer() {
               volume (77): {volumes.map((v, i) => `T${i + 1}: ${Math.round(v * 100)}%`).join(' | ')}
             </p>
             <p style={{ margin: '2px 0' }}>
-              speed (70): {playbackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
+              speed (70 / stick X): {effectivePlaybackRates.map((r, i) => `T${i + 1}: ${r.toFixed(2)}x`).join(' | ')}
             </p>
             <p style={{ margin: '2px 0' }}>
-              zoom (74): {zoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
+              zoom (74 / stick Y): {effectiveZoomLevels.map((z, i) => `T${i + 1}: ${z.toFixed(2)}x`).join(' | ')}
             </p>
             <p style={{ margin: '2px 0' }}>
               pos (xy): {positions.map((p, i) => `T${i + 1}: [${Math.round(p.x)}, ${Math.round(p.y)}]`).join(' | ')}

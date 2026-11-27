@@ -408,7 +408,7 @@ export default function VideoMixer({
         if (rate <= 0.05) {
           if (!videoEl.paused) videoEl.pause();
         } else {
-          const safeRate = Math.max(0.1, Math.min(2.0, rate));
+          const safeRate = Math.max(0.1, Math.min(3.0, rate));
           try {
             videoEl.playbackRate = safeRate;
             const isVisible = opacities[index] !== undefined && opacities[index] > 0;
